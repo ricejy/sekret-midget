@@ -1,0 +1,71 @@
+# ---- Personal data: NEVER commit ----
+# Real screenshots, their OCR output, and personal ground-truth labels.
+eval/personal/
+*.screenshots.db
+*.index.db
+
+# ---- Secrets ----
+.env
+.env.*
+*.pem
+*.p12
+*.mobileprovision
+ios/Runner/GoogleService-Info.plist
+
+# ---- Flutter / Dart ----
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+pubspec.lock
+*.dart.js
+*.info.json
+*.js_
+*.js.deps
+*.js.map
+.flutter-plugins
+.flutter-plugins-dependencies
+.flutter-versions
+coverage/
+
+# ---- iOS / Xcode ----
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/ephemeral/
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/App.framework
+ios/Runner/GeneratedPluginRegistrant.*
+**/*.xcworkspace/xcuserdata/
+**/*.xcodeproj/xcuserdata/
+**/*.xcodeproj/project.xcworkspace/
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# ---- Model weights (large; fetched, not committed) ----
+assets/models/
+*.onnx
+*.tflite
+*.gguf
+*.mlmodelc/
+
+# ---- Editors ----
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# ---- OS / shell noise ----
+.DS_Store
+Thumbs.db
+*.stackdump
+
+# ---- Python caches (in case of eval tooling) ----
+__pycache__/
+*.py[cod]
+.venv/

@@ -11,6 +11,15 @@
 
 Each resolved excerpt is 150–400 words. The names, identifiers, dates, diagnoses, treatments, events, and contractual terms are invented.
 
+## Suite registry
+
+| File | Purpose | Prompt | Status |
+|---|---|---|---|
+| `development_suite.json` | Development/tuning | `guardrail-v1` | Completed on iOS 26.5.2; results committed |
+| `acceptance_attempt_1.json` | Acceptance attempt 1 | `guardrail-v1` | Ready for one authoritative run; must not be used for tuning |
+
+The `guardrail-v1` prompt was frozen after the development run. Acceptance attempt 1 uses a new fictional residential lease and a new fictional medical record. It deliberately covers medication reactions, medical privacy, accommodations, and statements of permission versus evidence that an event actually occurred, without reusing development questions or expected answers.
+
 Validate a suite from the repository root on Windows or macOS with PowerShell:
 
 ```powershell

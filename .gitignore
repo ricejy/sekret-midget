@@ -1,6 +1,8 @@
 # ---- Personal data: NEVER commit ----
 # Real screenshots, their OCR output, and personal ground-truth labels.
 eval/personal/
+spikes/guardrail_harness/private/
+spikes/guardrail_harness/private-results/
 *.screenshots.db
 *.index.db
 
@@ -42,6 +44,7 @@ ios/Runner/GeneratedPluginRegistrant.*
 **/*.xcworkspace/xcuserdata/
 **/*.xcodeproj/xcuserdata/
 **/*.xcodeproj/project.xcworkspace/
+*.xcuserstate
 DerivedData/
 *.ipa
 *.dSYM.zip

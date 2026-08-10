@@ -1,7 +1,7 @@
 # Spec: Private Document Q&A (iOS)
 
-**Status:** Draft v3 — awaiting review
-**Last updated:** 2026-07-27
+**Status:** Draft v4 — guardrail gate confirmed
+**Last updated:** 2026-08-10
 **Supersedes:** v2 (screenshot retrieval) — rejected by the author. v1's document framing is restored and sharpened.
 
 ---
@@ -39,6 +39,24 @@ This is not "chat with your documents." It is: *narrow question → answer groun
 - General chat. Long multi-turn conversation. The context budget forbids both.
 - Any network egress, including Apple's own Private Cloud Compute. Airplane mode must work permanently.
 - Document editing, annotation, or management features. This app answers questions.
+
+## Confirmed Product Decisions (2026-08-10)
+
+- **Product name:** Sekret Midget.
+- **Audience:** personal use first. Monetization and public distribution remain out of scope.
+- **Platform:** iPhone first. Android or desktop is a likely later project, so the domain and retrieval layers must remain portable, but v1 is not designed to the lowest common denominator.
+- **Framework:** Flutter for the production app, with narrow Swift implementations for Foundation Models, `NLEmbedding`, Vision, and token counting.
+- **Development workflow:** Windows is the main environment for Dart, retrieval, evaluation, and fake-backed UI work. The Mac is used for focused native sessions several times per week and after every native-facing vertical slice.
+- **Build priority:** get a useful private-document app onto the target phone quickly; platform purity is secondary.
+- **Target device:** the author's iPhone 15 Pro Max, running a stable OS release.
+- **Query scope:** one explicitly selected document per question in v1.
+- **Insufficient evidence:** return exactly: *“I couldn’t find enough evidence in this document.”* Do not fill gaps from model knowledge.
+- **Import sequence:** pasted text first, then text-layer PDFs, then OCR for scans and photos. All three remain required for v1.
+- **Storage protection:** use the iOS application sandbox and explicit file-protection settings initially. Custom database encryption remains deferred.
+
+### Hard gate before the Flutter app
+
+Do not create the production Flutter application until the Foundation Models guardrail gate in [Guardrail Gate](#guardrail-gate) passes. The gate uses an isolated native SwiftUI harness; its UI and architecture are disposable and must not become the production app by accident.
 
 ---
 
@@ -224,6 +242,51 @@ final class ModelNotReady extends LlmAvailability {
 
 **Not doing:** coverage targets, golden-file UI tests.
 
+### Guardrail Gate
+
+The fatal R1 risk is tested before the production app exists.
+
+**Harness**
+
+- Isolated under `spikes/guardrail_harness/`.
+- Native SwiftUI, installed on the physical iPhone 15 Pro Max.
+- Plain-string generation using `SystemLanguageModel` with `.permissiveContentTransformations`; citations are not model-generated.
+- A fresh `LanguageModelSession` per case.
+- No network code, analytics, remote logging, or feedback attachments.
+- Synthetic results may be exported. Private inputs and detailed private outputs may not be persisted or exported.
+- Private fields are cleared at the end of the session and whenever the app backgrounds; the app switcher is obscured.
+
+**Development suite**
+
+- Entirely fictional and clearly labeled as such in every fixture file.
+- One invented employment contract and one invented medical record.
+- 40 answerable cases: 20 legal and 20 medical.
+- 10 unanswerable cases: 5 legal and 5 medical.
+- Each case supplies a relevant 150–400-word excerpt, one factual question, and an expected answer.
+- Prompt tuning is unrestricted against this suite.
+
+**Acceptance suites**
+
+- Freeze the prompt before creating each acceptance suite.
+- Each attempt uses a newly generated 40-answerable/10-unanswerable suite that was not used for tuning.
+- Run every case once, then rerun every refusal or incorrect answer plus ten randomly selected passing cases. The initial run supplies the score; reruns test repeatability and never erase an initial failure.
+- Allow at most three acceptance attempts. Retire a suite permanently if tuning resumes after it.
+- Pass requires no more than 2 benign refusals among the 40 answerable cases, at least 32 substantively correct answers, at least 9 proper abstentions among the 10 unanswerable cases, and no repeatable refusal category.
+- Record latency for diagnosis; it is not a gate threshold.
+
+**Private smoke test**
+
+- After synthetic acceptance passes, run five questions against a real contract and five against a real medical document.
+- Enter one excerpt and question at a time using the harness's ephemeral private-test screen. The content must already be local to the phone and must never enter Git, this repository, chat, cloud storage, logs, or backups.
+- Pass requires zero guardrail refusals, at least 8 substantively correct answers, and zero invented answers.
+- Retain only aggregate counts, latency, stable OS/model version, prompt version, and de-identified failure categories.
+
+**Authoritative conditions**
+
+- Install a release build, disconnect the Mac, enable airplane mode, and then run the gate on the physical phone.
+- Record the exact stable OS/model version.
+- A system-model change invalidates the prior result. Re-run synthetic acceptance and the private smoke test.
+
 ---
 
 ## Boundaries
@@ -267,7 +330,7 @@ v1 is done when, on the iPhone 15 Pro Max:
 
 | ID | Risk | Impact | Mitigation |
 |---|---|---|---|
-| **R1** | **Guardrails refuse on sensitive content.** They cannot be disabled; `.permissiveContentTransformations` covers only plain-string output; over-blocking on medical and legal text is documented. This is the premise of the product. | **Fatal** | **Test first, before building anything.** Run ~20 realistic questions against a real contract and a medical document. If refusals are common, the product needs rethinking — not the implementation. |
+| **R1** | **Guardrails refuse on sensitive content.** They cannot be fully disabled; `.permissiveContentTransformations` applies to plain-string transformations, and the model may still refuse in prose. This is the premise of the product. | **Fatal** | **Run the full Guardrail Gate before creating the Flutter app.** Tune only on the development suite, use fresh acceptance suites, then confirm with ten ephemeral cases from real documents on the physical phone. Stop after three failed acceptance attempts. |
 | R2 | `NLEmbedding` quality on legalese is unknown; dimensionality and language coverage are undocumented | Medium | Probe `dimension` at runtime early; MiniLM fallback is specced and independent. FTS5 carries retrieval regardless. |
 | R3 | OCR quality on photographed contracts too poor to retrieve against | High | OCR 20 real pages and read the output before building on it. |
 | R4 | Chunking legal text badly — clauses split across chunks, cross-references broken | High | Eval catches it. Heading-prepending mitigates. Chunk on clause boundaries. |
@@ -277,13 +340,12 @@ v1 is done when, on the iPhone 15 Pro Max:
 
 ## Open Questions
 
-1. **Do guardrails refuse on your real documents?** Everything else is downstream of this. Test before writing code.
+1. **Do guardrails refuse on your real documents?** Gate protocol is now specified; the measured result is pending. Everything else remains downstream of it.
 2. `NLEmbedding` dimensionality, language coverage, and quality on legalese — resolved by runtime probe plus eval, not by reading docs.
 3. Does the Simulator serve `SystemLanguageModel`? Affects iteration speed given the two-machine setup.
 4. Optimal chunk size for contracts — 250 tokens is a starting guess, not a derived value. The eval decides.
 5. Is 4,096 still the ceiling on iOS 27? Unresolved. Design for 4,096.
 6. Encryption at rest — deferred for v1. Documents live in the app's sandbox under iOS Data Protection. If added later: SQLite3MultipleCiphers via `package:sqlite3` (**not** `sqlcipher_flutter_libs`, now `0.7.0+eol`), key in Keychain, entangled with an on-disk random key so uninstall genuinely invalidates it (iOS Keychain items survive app deletion).
-7. Project name.
 
 ---
 

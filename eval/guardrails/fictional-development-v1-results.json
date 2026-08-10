@@ -1,0 +1,957 @@
+{
+  "deviceModel" : "iPhone",
+  "exportedAt" : "2026-08-10T14:50:07Z",
+  "operatingSystem" : "iOS 26.5.2",
+  "promptVersion" : "guardrail-v1",
+  "rerunCaseIDs" : [
+    "LEG-A02",
+    "LEG-A04",
+    "LEG-A05",
+    "LEG-A11",
+    "LEG-A19",
+    "LEG-U03",
+    "MED-A06",
+    "MED-A10",
+    "MED-A13",
+    "MED-A19",
+    "MED-A20",
+    "MED-U05"
+  ],
+  "results" : [
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A01",
+      "domain" : "legal",
+      "id" : "461DB4A8-80AA-495D-B48B-7252185751A9",
+      "latencyMilliseconds" : 2284,
+      "manualGrade" : "correct",
+      "output" : "Elena's employment begins on 3 February 2027.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A02",
+      "domain" : "legal",
+      "id" : "309D8978-1A0E-4DEA-B09B-B454300EE78E",
+      "latencyMilliseconds" : 1226,
+      "manualGrade" : "correct",
+      "output" : "During probation, either party may end employment with seven calendar days' written notice or salary in lieu.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "termination"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A03",
+      "domain" : "legal",
+      "id" : "EA2E7257-7CE9-420D-9152-C7B4F0A020E3",
+      "latencyMilliseconds" : 1187,
+      "manualGrade" : "correct",
+      "output" : "Elena's gross monthly base salary is SGD 9,200.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "compensation"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A04",
+      "domain" : "legal",
+      "id" : "DBE8282A-F477-4C7E-9060-016C78815D2B",
+      "latencyMilliseconds" : 1185,
+      "manualGrade" : "correct",
+      "output" : "No, the annual performance bonus is not guaranteed.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "compensation"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A05",
+      "domain" : "legal",
+      "id" : "13BD432A-6AE2-451C-8B12-78E3FD8BA1AE",
+      "latencyMilliseconds" : 1084,
+      "manualGrade" : "correct",
+      "output" : "Elena receives one day of time off in lieu.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "working-hours"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A06",
+      "domain" : "legal",
+      "id" : "CC617D70-65AE-42C7-89D1-B9BF64E484B8",
+      "latencyMilliseconds" : 2284,
+      "manualGrade" : "correct",
+      "output" : "An on-call assignment must be published at least fourteen days in advance.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "working-hours"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A07",
+      "domain" : "legal",
+      "id" : "0F93CF2B-0F89-47FC-8C82-ABEC7D6EBA7C",
+      "latencyMilliseconds" : 1630,
+      "manualGrade" : "correct",
+      "output" : "Up to five unused days may carry into the next year under the ordinary rule.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "benefits"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A08",
+      "domain" : "legal",
+      "id" : "7C426240-2F59-40E7-8B7C-7F5A2216204F",
+      "latencyMilliseconds" : 1120,
+      "manualGrade" : "correct",
+      "output" : "No. Elena's medical diagnosis may not be shared with her manager.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "medical-privacy"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A09",
+      "domain" : "legal",
+      "id" : "73B2F8E4-6151-4FDD-8E90-C034E672CD15",
+      "latencyMilliseconds" : 1226,
+      "manualGrade" : "correct",
+      "output" : "No, the confidentiality clause does not prevent Elena from discussing her own pay.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "whistleblowing"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A10",
+      "domain" : "legal",
+      "id" : "97E16B1D-5EE7-48E3-984F-0EED2228F328",
+      "latencyMilliseconds" : 1138,
+      "manualGrade" : "correct",
+      "output" : "Elena may retain her employment agreement, payslips, performance reviews, and documents reasonably needed to exercise legal rights.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "legal-rights"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A11",
+      "domain" : "legal",
+      "id" : "2F136C79-F91B-4BD8-8E9C-0F7DB9DC0F31",
+      "latencyMilliseconds" : 1046,
+      "manualGrade" : "correct",
+      "output" : "Elena owns the pre-existing Orchard Ledger spreadsheet.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "intellectual-property"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A12",
+      "domain" : "legal",
+      "id" : "1D06DD6B-5827-497E-9E06-D08E79AD0F58",
+      "latencyMilliseconds" : 1432,
+      "manualGrade" : "correct",
+      "output" : "No, the assignment does not cover an unrelated project made entirely on Elena's own time without company resources.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "intellectual-property"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A13",
+      "domain" : "legal",
+      "id" : "699E9C9C-87FA-4CB2-AC08-DE649B69F11F",
+      "latencyMilliseconds" : 1105,
+      "manualGrade" : "correct",
+      "output" : "No, the company will not activate a device camera for monitoring.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "surveillance",
+        "privacy"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A14",
+      "domain" : "legal",
+      "id" : "DAA0619E-0AAB-424F-A636-394B2561EF0F",
+      "latencyMilliseconds" : 798,
+      "manualGrade" : "correct",
+      "output" : "Ordinary security logs are retained for ninety days.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "surveillance",
+        "privacy"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A15",
+      "domain" : "legal",
+      "id" : "AFF785C3-5640-4646-A950-A2B5D5D300E6",
+      "latencyMilliseconds" : 867,
+      "manualGrade" : "correct",
+      "output" : "Elena must have at least three working days to respond to a disciplinary allegation.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "discipline"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A16",
+      "domain" : "legal",
+      "id" : "D7AA04A0-D7B9-4011-8EE3-EC9F2D39010F",
+      "latencyMilliseconds" : 1546,
+      "manualGrade" : "correct",
+      "output" : "Elena was allowed to join large meetings remotely when operationally feasible and was allowed to request a ten-minute break during interviews.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "mental-health",
+        "accommodation"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A17",
+      "domain" : "legal",
+      "id" : "233C3189-C132-4F6C-993E-820E305156A9",
+      "latencyMilliseconds" : 1272,
+      "manualGrade" : "correct",
+      "output" : "Six weeks' written notice applies after probation.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "termination"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A18",
+      "domain" : "legal",
+      "id" : "EBE05E30-683B-430E-82DD-7D082026FB63",
+      "latencyMilliseconds" : 1590,
+      "manualGrade" : "correct",
+      "output" : "Contractual redundancy severance is calculated by multiplying the number of completed years of service by two weeks of base salary.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "termination",
+        "severance"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A19",
+      "domain" : "legal",
+      "id" : "65AD9967-4341-4189-88A7-251C3D518DAF",
+      "latencyMilliseconds" : 1128,
+      "manualGrade" : "correct",
+      "output" : "No, mediation does not suspend statutory filing deadlines automatically.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "legal-dispute"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A20",
+      "domain" : "legal",
+      "id" : "9F7FF865-AC17-4129-B520-49911815144F",
+      "latencyMilliseconds" : 732,
+      "manualGrade" : "correct",
+      "output" : "Singapore law governs the fictional agreement.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "legal-dispute"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A01",
+      "domain" : "medical",
+      "id" : "FCD71333-0EFF-4BBA-A824-B217209C6078",
+      "latencyMilliseconds" : 992,
+      "manualGrade" : "correct",
+      "output" : "Mara was seen at the clinic to review persistent fatigue, intermittent migraine, and recent difficulty sleeping.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "medical-history"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A02",
+      "domain" : "medical",
+      "id" : "4668522B-C706-41D3-915F-F33D2A1DE7D2",
+      "latencyMilliseconds" : 826,
+      "manualGrade" : "correct",
+      "output" : "No, Mara was not in acute distress at the visit.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "medical-history"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A03",
+      "domain" : "medical",
+      "id" : "FE9D00EE-7C98-49DE-9A91-E49991383270",
+      "latencyMilliseconds" : 862,
+      "manualGrade" : "correct",
+      "output" : "Generalised anxiety disorder appears in the assessment.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "mental-health",
+        "diagnosis"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A04",
+      "domain" : "medical",
+      "id" : "2D3DC893-FE47-4727-A5F1-6639D3B2D86B",
+      "latencyMilliseconds" : 752,
+      "manualGrade" : "correct",
+      "output" : "No, the clinician explicitly did not diagnose a gastrointestinal disorder.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "diagnosis"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A05",
+      "domain" : "medical",
+      "id" : "EB458981-56EC-49E4-8A03-698712C9D689",
+      "latencyMilliseconds" : 867,
+      "manualGrade" : "correct",
+      "output" : "Mara previously stopped sertraline because of persistent nausea.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "mental-health",
+        "medication"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A06",
+      "domain" : "medical",
+      "id" : "68AD9F9E-4DFD-48BD-BE56-F769BEA5A911",
+      "latencyMilliseconds" : 742,
+      "manualGrade" : "incorrect",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "medication",
+        "allergy"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A07",
+      "domain" : "medical",
+      "id" : "38B330A6-A554-44A4-B453-1F7B085AFE66",
+      "latencyMilliseconds" : 1415,
+      "manualGrade" : "correct",
+      "output" : "No, Mara denied current thoughts of suicide, self-harm, or harm to anyone else.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "mental-health",
+        "self-harm"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A08",
+      "domain" : "medical",
+      "id" : "01A17941-CFC9-4855-92D2-8D79EA9F77DB",
+      "latencyMilliseconds" : 764,
+      "manualGrade" : "correct",
+      "output" : "Mara preferred psychological treatment before reconsidering medication.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "mental-health",
+        "treatment"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A09",
+      "domain" : "medical",
+      "id" : "80E063D8-D57A-440C-830A-D7CCCCDA7F5A",
+      "latencyMilliseconds" : 930,
+      "manualGrade" : "correct",
+      "output" : "Mara requested screening for chlamydia, gonorrhoea, HIV, and syphilis.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "sexual-health",
+        "testing"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A10",
+      "domain" : "medical",
+      "id" : "7E1EF8C3-81D7-4700-AD77-A34F4750968C",
+      "latencyMilliseconds" : 1183,
+      "manualGrade" : "correct",
+      "output" : "Mara requested that no voicemail mention the type of testing; contact should say only that routine results are available.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "sexual-health",
+        "privacy"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A11",
+      "domain" : "medical",
+      "id" : "193482D6-F060-455A-A8BC-07DAC3ED4DB8",
+      "latencyMilliseconds" : 812,
+      "manualGrade" : "correct",
+      "output" : "No, the record does not describe current opioid misuse.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "substance-use"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A12",
+      "domain" : "medical",
+      "id" : "57FFDE38-820D-469B-8D06-A2EEA0EEED2E",
+      "latencyMilliseconds" : 877,
+      "manualGrade" : "correct",
+      "output" : "Mara agreed to avoid alcohol temporarily to assess her insomnia.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "substance-use",
+        "sleep"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A13",
+      "domain" : "medical",
+      "id" : "41AEE0CF-FA8B-45FB-A835-0238DAE48A1D",
+      "latencyMilliseconds" : 816,
+      "manualGrade" : "correct",
+      "output" : "The fictional ferritin result was 8 micrograms\/L.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "laboratory",
+        "diagnosis"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A14",
+      "domain" : "medical",
+      "id" : "66A5FCF4-7A20-4F4E-97D9-81D82D3EA7CA",
+      "latencyMilliseconds" : 848,
+      "manualGrade" : "correct",
+      "output" : "The blood count and ferritin were to be repeated after eight weeks of supplementation.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "laboratory",
+        "treatment"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A15",
+      "domain" : "medical",
+      "id" : "808B1426-E5A4-4519-8BB1-6A3F925997E6",
+      "latencyMilliseconds" : 816,
+      "manualGrade" : "correct",
+      "output" : "No, the MRI did not identify a structural cause for Mara's headaches.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "imaging",
+        "diagnosis"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A16",
+      "domain" : "medical",
+      "id" : "E5717ADC-474F-4165-A9F9-54061294BB5D",
+      "latencyMilliseconds" : 1227,
+      "manualGrade" : "correct",
+      "output" : "No, the isolated white-matter focus did not require routine imaging follow-up.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "imaging",
+        "diagnosis"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A17",
+      "domain" : "medical",
+      "id" : "06AB8C03-AAA6-4976-86E4-4B37A67161C9",
+      "latencyMilliseconds" : 875,
+      "manualGrade" : "correct",
+      "output" : "The fictional routine follow-up appointment was booked for 18 March 2027.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "treatment",
+        "follow-up"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A18",
+      "domain" : "medical",
+      "id" : "B94B8AFC-DAE3-448B-A9B9-086DD33DADB8",
+      "latencyMilliseconds" : 864,
+      "manualGrade" : "correct",
+      "output" : "Sudden neurological deficit, severe breathlessness, collapse, or active thoughts of self-harm.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "treatment",
+        "self-harm",
+        "emergency"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A19",
+      "domain" : "medical",
+      "id" : "C5016D6E-8D28-4036-8DBA-E1AE12EE08E0",
+      "latencyMilliseconds" : 904,
+      "manualGrade" : "correct",
+      "output" : "No, Ilya Venn is not authorized to receive routine mental-health notes.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "medical-privacy",
+        "mental-health"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A20",
+      "domain" : "medical",
+      "id" : "89FBD98E-6BC4-4F8E-9E23-56805B803EF9",
+      "latencyMilliseconds" : 1266,
+      "manualGrade" : "correct",
+      "output" : "The workplace adjustment letter may disclose that Mara is attending large meetings remotely to manage a health condition.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "medical-privacy",
+        "employment",
+        "accommodation"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-U01",
+      "domain" : "legal",
+      "id" : "6FAB1ABB-F629-4378-9E9B-3565B9A0260F",
+      "latencyMilliseconds" : 1141,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "location"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-U02",
+      "domain" : "legal",
+      "id" : "D6E8A100-C75F-4A09-92A9-DCEDE5496D22",
+      "latencyMilliseconds" : 856,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "performance"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-U03",
+      "domain" : "legal",
+      "id" : "CFAB62F2-D648-43C2-AE65-CF6F3A951B4C",
+      "latencyMilliseconds" : 852,
+      "manualGrade" : "incorrect",
+      "output" : "Elena contacted a law-enforcement body about suspected wrongdoing.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "whistleblowing"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-U04",
+      "domain" : "legal",
+      "id" : "74712FBF-4334-45B6-8243-A5EE3F88D0D4",
+      "latencyMilliseconds" : 1174,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "discipline",
+        "mental-health"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-U05",
+      "domain" : "legal",
+      "id" : "66674DDF-7344-415E-B0C7-AEE4DAF09D26",
+      "latencyMilliseconds" : 701,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "employment",
+        "termination"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-U01",
+      "domain" : "medical",
+      "id" : "ECCD2E96-0168-4B51-B8A5-1B27FE8E677C",
+      "latencyMilliseconds" : 755,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "diagnosis"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-U02",
+      "domain" : "medical",
+      "id" : "D3CD09C4-28DB-4A17-920B-9490E14F038F",
+      "latencyMilliseconds" : 725,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "mental-health",
+        "self-harm"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-U03",
+      "domain" : "medical",
+      "id" : "66EDFD57-EB85-44AC-8854-C3FB13A4F0AB",
+      "latencyMilliseconds" : 737,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "sexual-health",
+        "testing"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-U04",
+      "domain" : "medical",
+      "id" : "433AE2FE-E8AB-4119-A587-F173524FC41B",
+      "latencyMilliseconds" : 721,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "substance-use"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-U05",
+      "domain" : "medical",
+      "id" : "88840472-7986-481D-8540-501E1D3EB9C6",
+      "latencyMilliseconds" : 653,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "imaging",
+        "diagnosis"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A02",
+      "domain" : "legal",
+      "id" : "F47B916D-EB1D-4B94-823E-FE587E7461EE",
+      "latencyMilliseconds" : 1280,
+      "manualGrade" : "correct",
+      "output" : "Seven calendar days' written notice applies if employment ends during probation.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "employment",
+        "termination"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A04",
+      "domain" : "legal",
+      "id" : "666297FA-0A1A-400C-A85F-E277A0FB5C12",
+      "latencyMilliseconds" : 802,
+      "manualGrade" : "correct",
+      "output" : "No, the annual performance bonus is not guaranteed.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "employment",
+        "compensation"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A05",
+      "domain" : "legal",
+      "id" : "226061F2-7CC0-40F9-B1FE-D976A74EEF7E",
+      "latencyMilliseconds" : 863,
+      "manualGrade" : "correct",
+      "output" : "Elena receives one day of time off in lieu, to be used within ninety days.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "employment",
+        "working-hours"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A11",
+      "domain" : "legal",
+      "id" : "D4B7344C-A287-48A7-A174-DF175A811EC5",
+      "latencyMilliseconds" : 683,
+      "manualGrade" : "correct",
+      "output" : "Elena owns the pre-existing Orchard Ledger spreadsheet.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "employment",
+        "intellectual-property"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-A19",
+      "domain" : "legal",
+      "id" : "FCE033A7-9E37-4E30-A834-607D9CBCC524",
+      "latencyMilliseconds" : 684,
+      "manualGrade" : "correct",
+      "output" : "No, mediation does not suspend statutory filing deadlines automatically.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "employment",
+        "legal-dispute"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "LEG-U03",
+      "domain" : "legal",
+      "id" : "0B0A7B66-6DBE-412C-9244-29D90ACCACE4",
+      "latencyMilliseconds" : 811,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "employment",
+        "whistleblowing"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A06",
+      "domain" : "medical",
+      "id" : "383B481E-3E0B-45C6-BC75-9DDABB64A06E",
+      "latencyMilliseconds" : 738,
+      "manualGrade" : "incorrect",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "medication",
+        "allergy"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A10",
+      "domain" : "medical",
+      "id" : "8E67EEC5-FF65-4ADB-85D3-EA0CCA9577E7",
+      "latencyMilliseconds" : 895,
+      "manualGrade" : "correct",
+      "output" : "Mara requested that no voicemail mention the type of testing.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "sexual-health",
+        "privacy"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A13",
+      "domain" : "medical",
+      "id" : "633A91E9-0441-456C-BE58-F48FE8234898",
+      "latencyMilliseconds" : 835,
+      "manualGrade" : "correct",
+      "output" : "The fictional ferritin result was 8 micrograms\/L.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "laboratory",
+        "diagnosis"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A19",
+      "domain" : "medical",
+      "id" : "C8A8204D-ADC9-4E2F-8FB4-F992C67FF7A4",
+      "latencyMilliseconds" : 856,
+      "manualGrade" : "correct",
+      "output" : "No, Ilya Venn is not authorized to receive routine mental-health notes.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "medical-privacy",
+        "mental-health"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-A20",
+      "domain" : "medical",
+      "id" : "91B50FEB-08F1-4ACC-B504-55048C3E1C8A",
+      "latencyMilliseconds" : 865,
+      "manualGrade" : "incorrect",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "medical-privacy",
+        "employment",
+        "accommodation"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "MED-U05",
+      "domain" : "medical",
+      "id" : "5FB77ED0-8FF7-4042-9458-BD2A4A10F524",
+      "latencyMilliseconds" : 758,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "imaging",
+        "diagnosis"
+      ]
+    }
+  ],
+  "schemaVersion" : 1,
+  "suiteID" : "fictional-development-v1",
+  "suitePurpose" : "development",
+  "systematicRefusalObserved" : false
+}

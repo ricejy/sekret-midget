@@ -1,7 +1,7 @@
 # Spec: Private Document Q&A (iOS)
 
-**Status:** Draft v4 — guardrail gate confirmed
-**Last updated:** 2026-08-10
+**Status:** Draft v4 — guardrail gate passed
+**Last updated:** 2026-08-11
 **Supersedes:** v2 (screenshot retrieval) — rejected by the author. v1's document framing is restored and sharpened.
 
 ---
@@ -56,7 +56,7 @@ This is not "chat with your documents." It is: *narrow question → answer groun
 
 ### Hard gate before the Flutter app
 
-Do not create the production Flutter application until the Foundation Models guardrail gate in [Guardrail Gate](#guardrail-gate) passes. The gate uses an isolated native SwiftUI harness; its UI and architecture are disposable and must not become the production app by accident.
+The Foundation Models guardrail gate in [Guardrail Gate](#guardrail-gate) passed on iOS 26.5.2. Production Flutter work may begin. The gate used an isolated native SwiftUI harness; its UI and architecture are disposable and must not become the production app by accident.
 
 ---
 
@@ -246,6 +246,8 @@ final class ModelNotReady extends LlmAvailability {
 
 The fatal R1 risk is tested before the production app exists.
 
+**Outcome: PASSED on 2026-08-11.** With `guardrail-v1` frozen on an iPhone 15 Pro Max running iOS 26.5.2, acceptance attempt 1 scored 37/40 correct answerable cases, 0/40 benign refusals, and 10/10 proper abstentions. The subsequent private smoke test scored 10/10 correct with zero false abstentions, factual errors, invented answers, hard refusals, verbal refusals, or runtime failures. Median private-test latency was 1,546 ms. Only aggregate private evidence was retained in `eval/guardrails/private_smoke_2026-08-11.json`.
+
 **Harness**
 
 - Isolated under `spikes/guardrail_harness/`.
@@ -330,7 +332,7 @@ v1 is done when, on the iPhone 15 Pro Max:
 
 | ID | Risk | Impact | Mitigation |
 |---|---|---|---|
-| **R1** | **Guardrails refuse on sensitive content.** They cannot be fully disabled; `.permissiveContentTransformations` applies to plain-string transformations, and the model may still refuse in prose. This is the premise of the product. | **Fatal** | **Run the full Guardrail Gate before creating the Flutter app.** Tune only on the development suite, use fresh acceptance suites, then confirm with ten ephemeral cases from real documents on the physical phone. Stop after three failed acceptance attempts. |
+| **R1** | **Guardrails refuse on sensitive content.** They cannot be fully disabled; `.permissiveContentTransformations` applies to plain-string transformations, and the model may still refuse in prose. This is the premise of the product. | **Fatal** | **Gate passed for `guardrail-v1` on iOS 26.5.2.** Re-run synthetic acceptance and the private smoke test after any system-model change; a prior pass does not transfer automatically to a new model version. |
 | R2 | `NLEmbedding` quality on legalese is unknown; dimensionality and language coverage are undocumented | Medium | Probe `dimension` at runtime early; MiniLM fallback is specced and independent. FTS5 carries retrieval regardless. |
 | R3 | OCR quality on photographed contracts too poor to retrieve against | High | OCR 20 real pages and read the output before building on it. |
 | R4 | Chunking legal text badly — clauses split across chunks, cross-references broken | High | Eval catches it. Heading-prepending mitigates. Chunk on clause boundaries. |
@@ -340,12 +342,11 @@ v1 is done when, on the iPhone 15 Pro Max:
 
 ## Open Questions
 
-1. **Do guardrails refuse on your real documents?** Gate protocol is now specified; the measured result is pending. Everything else remains downstream of it.
-2. `NLEmbedding` dimensionality, language coverage, and quality on legalese — resolved by runtime probe plus eval, not by reading docs.
-3. Does the Simulator serve `SystemLanguageModel`? Affects iteration speed given the two-machine setup.
-4. Optimal chunk size for contracts — 250 tokens is a starting guess, not a derived value. The eval decides.
-5. Is 4,096 still the ceiling on iOS 27? Unresolved. Design for 4,096.
-6. Encryption at rest — deferred for v1. Documents live in the app's sandbox under iOS Data Protection. If added later: SQLite3MultipleCiphers via `package:sqlite3` (**not** `sqlcipher_flutter_libs`, now `0.7.0+eol`), key in Keychain, entangled with an on-disk random key so uninstall genuinely invalidates it (iOS Keychain items survive app deletion).
+1. `NLEmbedding` dimensionality, language coverage, and quality on legalese — resolved by runtime probe plus eval, not by reading docs.
+2. Does the Simulator serve `SystemLanguageModel`? Affects iteration speed given the two-machine setup.
+3. Optimal chunk size for contracts — 250 tokens is a starting guess, not a derived value. The eval decides.
+4. Is 4,096 still the ceiling on iOS 27? Unresolved. Design for 4,096.
+5. Encryption at rest — deferred for v1. Documents live in the app's sandbox under iOS Data Protection. If added later: SQLite3MultipleCiphers via `package:sqlite3` (**not** `sqlcipher_flutter_libs`, now `0.7.0+eol`), key in Keychain, entangled with an on-disk random key so uninstall genuinely invalidates it (iOS Keychain items survive app deletion).
 
 ---
 

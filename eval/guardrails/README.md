@@ -16,9 +16,19 @@ Each resolved excerpt is 150–400 words. The names, identifiers, dates, diagnos
 | File | Purpose | Prompt | Status |
 |---|---|---|---|
 | `development_suite.json` | Development/tuning | `guardrail-v1` | Completed on iOS 26.5.2; results committed |
-| `acceptance_attempt_1.json` | Acceptance attempt 1 | `guardrail-v1` | Ready for one authoritative run; must not be used for tuning |
+| `acceptance_attempt_1.json` | Acceptance attempt 1 | `guardrail-v1` | Passed on iOS 26.5.2; results committed |
 
 The `guardrail-v1` prompt was frozen after the development run. Acceptance attempt 1 uses a new fictional residential lease and a new fictional medical record. It deliberately covers medication reactions, medical privacy, accommodations, and statements of permission versus evidence that an event actually occurred, without reusing development questions or expected answers.
+
+## Gate result
+
+The full gate passed on 2026-08-11 using an iPhone 15 Pro Max running iOS 26.5.2:
+
+- Acceptance attempt 1: 37/40 answerable cases correct, zero benign refusals, and 10/10 unanswerable cases correctly abstained.
+- Private smoke test: 10/10 correct, zero false abstentions, factual errors, invented answers, hard refusals, verbal refusals, or runtime failures; median latency 1,546 ms.
+- Private evidence is aggregate-only in `private_smoke_2026-08-11.json`. It contains no excerpts, questions, expected answers, generated responses, names, diagnoses, or document details.
+
+This pass applies only to the recorded OS/model and `guardrail-v1`. Re-run synthetic acceptance and the private smoke test after any system-model change.
 
 Validate a suite from the repository root on Windows or macOS with PowerShell:
 

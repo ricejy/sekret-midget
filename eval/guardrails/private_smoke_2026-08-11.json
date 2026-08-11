@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "testType": "private-smoke",
+  "containsPrivateContent": false,
+  "recordedDate": "2026-08-11",
+  "device": "iPhone 15 Pro Max",
+  "operatingSystem": "iOS 26.5.2",
+  "promptVersion": "guardrail-v1",
+  "contractCaseCount": 5,
+  "medicalCaseCount": 5,
+  "totalCaseCount": 10,
+  "correctCount": 10,
+  "falseAbstentionCount": 0,
+  "wrongFactualAnswerCount": 0,
+  "inventedAnswerCount": 0,
+  "hardGuardrailRefusalCount": 0,
+  "verbalRefusalCount": 0,
+  "runtimeFailureCount": 0,
+  "medianLatencyMilliseconds": 1546,
+  "deidentifiedFailureCategories": [],
+  "passed": true,
+  "privacyNote": "Aggregate-only evidence. No private excerpts, questions, expected answers, generated responses, names, diagnoses, or document details are retained."
+}

@@ -20,7 +20,6 @@ ios/Runner/GoogleService-Info.plist
 .pub-cache/
 .pub/
 build/
-pubspec.lock
 *.dart.js
 *.info.json
 *.js_

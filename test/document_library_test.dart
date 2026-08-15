@@ -158,6 +158,198 @@ Employees must report a workplace incident to the safety officer within 14 calen
     expect(outcome, isA<GroundedAnswer>());
   });
 
+  test('a mixed-topic document answers the topic in the question', () async {
+    final temporaryDirectory = await Directory.systemTemp.createTemp(
+      'sekret-midget-mixed-topic-',
+    );
+    final library = await openDocumentLibrary(
+      databasePath:
+          '${temporaryDirectory.path}${Platform.pathSeparator}library.sqlite3',
+      embedder: const _ConstantEmbedder(),
+      llmBackend: const FakeLlmBackend(),
+      tokenCounter: const FakeTokenCounter(),
+    );
+    addTearDown(() async {
+      await library.close();
+      await temporaryDirectory.delete(recursive: true);
+    });
+    await library
+        .importPastedText(
+          title: 'Fictional mixed policy',
+          text: '''
+TERMINATION
+
+Either party may end employment by giving 30 days' written notice.
+
+INCIDENT REPORTING
+
+Employees must report a workplace incident within 14 calendar days.
+''',
+        )
+        .drain<void>();
+    final document = (await library.listDocuments()).single;
+
+    final outcome = await library.ask(
+      documentId: document.id,
+      question: 'When must an incident be reported?',
+    );
+
+    expect(
+      outcome,
+      isA<GroundedAnswer>().having(
+        (answer) => answer.text,
+        'answer',
+        'An employee must report an incident within 14 calendar days.',
+      ),
+    );
+  });
+
+  test('the citation identifies the chunk that supports the answer', () async {
+    final temporaryDirectory = await Directory.systemTemp.createTemp(
+      'sekret-midget-citation-source-',
+    );
+    final library = await openDocumentLibrary(
+      databasePath:
+          '${temporaryDirectory.path}${Platform.pathSeparator}library.sqlite3',
+      embedder: const _CitationEmbedder(),
+      llmBackend: const _LaterChunkBackend(),
+      tokenCounter: const FakeTokenCounter(),
+    );
+    addTearDown(() async {
+      await library.close();
+      await temporaryDirectory.delete(recursive: true);
+    });
+    await library
+        .importPastedText(
+          title: 'Fictional two-clause policy',
+          text: '''
+ACCESS CODE
+
+The workshop access code is cobalt.
+
+INCIDENT DEADLINE
+
+The incident deadline is fourteen days.
+''',
+        )
+        .drain<void>();
+    final document = (await library.listDocuments()).single;
+
+    final outcome = await library.ask(
+      documentId: document.id,
+      question: 'What are the access code and the incident deadline?',
+    );
+
+    expect(
+      outcome,
+      isA<GroundedAnswer>()
+          .having(
+            (answer) => answer.text,
+            'answer',
+            'The incident deadline is fourteen days.',
+          )
+          .having(
+            (answer) => answer.citation.heading,
+            'supporting heading',
+            'INCIDENT DEADLINE',
+          )
+          .having(
+            (answer) => answer.citation.passage,
+            'supporting passage',
+            contains('fourteen days'),
+          ),
+    );
+  });
+
+  test(
+    'a numbered title-case clause is preserved as citation metadata',
+    () async {
+      final temporaryDirectory = await Directory.systemTemp.createTemp(
+        'sekret-midget-title-case-heading-',
+      );
+      final library = await openDocumentLibrary(
+        databasePath:
+            '${temporaryDirectory.path}${Platform.pathSeparator}library.sqlite3',
+        embedder: const FakeEmbedder(),
+        llmBackend: const FakeLlmBackend(),
+        tokenCounter: const FakeTokenCounter(),
+      );
+      addTearDown(() async {
+        await library.close();
+        await temporaryDirectory.delete(recursive: true);
+      });
+      await library
+          .importPastedText(
+            title: 'Fictional employment agreement',
+            text: '''
+12. Termination
+
+Either party may end employment by giving 30 days' written notice.
+''',
+          )
+          .drain<void>();
+      final document = (await library.listDocuments()).single;
+
+      final outcome = await library.ask(
+        documentId: document.id,
+        question: 'What notice is required to end employment?',
+      );
+
+      expect(
+        outcome,
+        isA<GroundedAnswer>().having(
+          (answer) => answer.citation.heading,
+          'heading',
+          '12. Termination',
+        ),
+      );
+    },
+  );
+
+  test('citation text preserves paragraph boundaries from the import', () async {
+    final temporaryDirectory = await Directory.systemTemp.createTemp(
+      'sekret-midget-paragraphs-',
+    );
+    final library = await openDocumentLibrary(
+      databasePath:
+          '${temporaryDirectory.path}${Platform.pathSeparator}library.sqlite3',
+      embedder: const FakeEmbedder(),
+      llmBackend: const FakeLlmBackend(),
+      tokenCounter: const FakeTokenCounter(),
+    );
+    addTearDown(() async {
+      await library.close();
+      await temporaryDirectory.delete(recursive: true);
+    });
+    await library
+        .importPastedText(
+          title: 'Fictional paragraph policy',
+          text: '''
+INCIDENT REPORTING
+
+Employees must report a workplace incident within 14 calendar days.
+
+The report must identify the date, location, and people involved.
+''',
+        )
+        .drain<void>();
+    final document = (await library.listDocuments()).single;
+
+    final outcome = await library.ask(
+      documentId: document.id,
+      question: 'When must an incident be reported?',
+    );
+
+    expect(
+      outcome,
+      isA<GroundedAnswer>().having(
+        (answer) => answer.citation.passage,
+        'passage',
+        contains('14 calendar days.\n\nThe report must identify'),
+      ),
+    );
+  });
+
   test('chunk boundaries use the injected model token counter', () async {
     final temporaryDirectory = await Directory.systemTemp.createTemp(
       'sekret-midget-token-chunks-',
@@ -238,6 +430,41 @@ Employees must report a workplace incident to the safety officer within 14 calen
         'source heading',
         'INCIDENT REPORTING',
       ),
+    );
+  });
+
+  test('a long trailing sentence is retained as chunk overlap', () async {
+    final temporaryDirectory = await Directory.systemTemp.createTemp(
+      'sekret-midget-overlap-',
+    );
+    final embedder = _RecordingEmbedder();
+    final library = await openDocumentLibrary(
+      databasePath:
+          '${temporaryDirectory.path}${Platform.pathSeparator}library.sqlite3',
+      embedder: embedder,
+      llmBackend: const FakeLlmBackend(),
+      tokenCounter: const _OverlapTokenCounter(),
+    );
+    addTearDown(() async {
+      await library.close();
+      await temporaryDirectory.delete(recursive: true);
+    });
+
+    await library
+        .importPastedText(
+          title: 'Fictional overlap policy',
+          text: '''
+REPORTING RULES
+
+Alpha sentence establishes the initial rule. Bridge sentence carries essential cross-boundary context. Final sentence supplies the deadline.
+''',
+        )
+        .drain<void>();
+
+    expect(embedder.inputs, hasLength(2));
+    expect(
+      embedder.inputs.last,
+      contains('Bridge sentence carries essential cross-boundary context.'),
     );
   });
 
@@ -368,6 +595,44 @@ Employees must report a workplace incident to the safety officer within 14 calen
       expect(outcome, isA<InsufficientEvidence>());
     },
   );
+
+  test(
+    'context budgeting includes serialized headings and separators',
+    () async {
+      final temporaryDirectory = await Directory.systemTemp.createTemp(
+        'sekret-midget-serialized-context-',
+      );
+      final library = await openDocumentLibrary(
+        databasePath:
+            '${temporaryDirectory.path}${Platform.pathSeparator}library.sqlite3',
+        embedder: const FakeEmbedder(),
+        llmBackend: const _FailIfCalledBackend(),
+        tokenCounter: const _HeadingSensitiveTokenCounter(),
+      );
+      addTearDown(() async {
+        await library.close();
+        await temporaryDirectory.delete(recursive: true);
+      });
+      await library
+          .importPastedText(
+            title: 'Fictional heading-heavy policy',
+            text: '''
+INCIDENT REPORTING
+
+Employees must report a workplace incident within 14 calendar days.
+''',
+          )
+          .drain<void>();
+      final document = (await library.listDocuments()).single;
+
+      final outcome = await library.ask(
+        documentId: document.id,
+        question: 'When must an incident be reported?',
+      );
+
+      expect(outcome, isA<InsufficientEvidence>());
+    },
+  );
 }
 
 final class _FailingEmbedder implements Embedder {
@@ -384,6 +649,50 @@ final class _ZeroEmbedder implements Embedder {
 
   @override
   Future<List<double>> embed(String text) async => const [0, 0, 0, 0];
+}
+
+final class _ConstantEmbedder implements Embedder {
+  const _ConstantEmbedder();
+
+  @override
+  Future<List<double>> embed(String text) async => const [1];
+}
+
+final class _CitationEmbedder implements Embedder {
+  const _CitationEmbedder();
+
+  @override
+  Future<List<double>> embed(String text) async {
+    final normalized = text.toLowerCase();
+    if (normalized.contains('access') && normalized.contains('deadline')) {
+      return const [1, 0.2];
+    }
+    if (normalized.contains('deadline') || normalized.contains('fourteen')) {
+      return const [0, 1];
+    }
+    if (normalized.contains('access') || normalized.contains('cobalt')) {
+      return const [1, 0];
+    }
+    return const [0, 0];
+  }
+}
+
+final class _LaterChunkBackend implements LlmBackend {
+  const _LaterChunkBackend();
+
+  @override
+  Future<LlmAvailability> availability() async => const Available();
+
+  @override
+  Future<GeneratedAnswer> generate({
+    required String question,
+    required List<String> evidence,
+  }) async {
+    return const GeneratedAnswer(
+      text: 'The incident deadline is fourteen days.',
+      supportingEvidenceIndex: 1,
+    );
+  }
 }
 
 final class _RecordingEmbedder implements Embedder {
@@ -412,12 +721,46 @@ final class _SentenceBudgetTokenCounter implements TokenCounter {
   }
 }
 
+final class _OverlapTokenCounter implements TokenCounter {
+  const _OverlapTokenCounter();
+
+  @override
+  Future<int> countTokens(String text) async {
+    var count = 0;
+    if (text.contains('Alpha sentence')) {
+      count += 120;
+    }
+    if (text.contains('Bridge sentence')) {
+      count += 120;
+    }
+    if (text.contains('Final sentence')) {
+      count += 40;
+    }
+    return count == 0 ? 10 : count;
+  }
+}
+
 final class _OversizedEvidenceTokenCounter implements TokenCounter {
   const _OversizedEvidenceTokenCounter();
 
   @override
   Future<int> countTokens(String text) async {
     return text.contains('Employees must report') ? 4000 : 10;
+  }
+}
+
+final class _HeadingSensitiveTokenCounter implements TokenCounter {
+  const _HeadingSensitiveTokenCounter();
+
+  @override
+  Future<int> countTokens(String text) async {
+    if (text.startsWith('INCIDENT REPORTING\n')) {
+      return 3600;
+    }
+    if (text.contains('Employees must report')) {
+      return 3400;
+    }
+    return 10;
   }
 }
 
@@ -428,9 +771,9 @@ final class _FailIfCalledBackend implements LlmBackend {
   Future<LlmAvailability> availability() async => const Available();
 
   @override
-  Future<String> generate({
+  Future<GeneratedAnswer> generate({
     required String question,
-    required String evidence,
+    required List<String> evidence,
   }) {
     throw StateError('The backend must not receive an oversized chunk.');
   }

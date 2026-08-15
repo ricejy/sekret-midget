@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sekret_midget/app.dart';
 import 'package:sekret_midget/core/library/document_library.dart';
+import 'package:sekret_midget/core/platform/embedder.dart';
 import 'package:sekret_midget/core/platform/llm_backend.dart';
 import 'package:sekret_midget/demo/fake_native_capabilities.dart';
 
@@ -72,6 +75,98 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byKey(const Key('import-title')), findsOneWidget);
     expect(find.byKey(const Key('import-text')), findsOneWidget);
+  });
+
+  testWidgets('an answer is discarded when another document is selected', (
+    tester,
+  ) async {
+    _useWideTestSurface(tester);
+    final backend = _ControllableLlmBackend();
+    final library = await openDocumentLibrary(
+      databasePath: ':memory:',
+      embedder: const FakeEmbedder(),
+      llmBackend: backend,
+      tokenCounter: const FakeTokenCounter(),
+    );
+    addTearDown(library.close);
+    await library
+        .importPastedText(title: 'Document A', text: _policyText)
+        .drain<void>();
+    await library
+        .importPastedText(
+          title: 'Document B',
+          text: 'EQUIPMENT\n\nProtective equipment remains company property.',
+        )
+        .drain<void>();
+    await tester.pumpWidget(SekretMidgetApp(documentLibrary: library));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(InkWell, 'Document A'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('question-field')),
+      'When must an incident be reported?',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Ask document'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(InkWell, 'Document B'));
+    await tester.pump();
+    backend.complete(
+      'An employee must report an incident within 14 calendar days.',
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('An employee must report an incident within 14 calendar days.'),
+      findsNothing,
+    );
+    expect(find.text('Document B'), findsWidgets);
+  });
+
+  testWidgets('a persistent library startup failure is shown in the app', (
+    tester,
+  ) async {
+    final startup = Completer<DocumentLibrary>();
+    await tester.pumpWidget(
+      SekretMidgetApp(documentLibraryFuture: startup.future),
+    );
+    startup.completeError(StateError('synthetic corrupt database detail'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('The private document library could not be opened.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('synthetic corrupt'), findsNothing);
+  });
+
+  testWidgets('a failed import checks only stages that actually finished', (
+    tester,
+  ) async {
+    _useWideTestSurface(tester);
+    final library = await openDocumentLibrary(
+      databasePath: ':memory:',
+      embedder: const _ThrowingEmbedder(),
+      llmBackend: const FakeLlmBackend(),
+      tokenCounter: const FakeTokenCounter(),
+    );
+    addTearDown(library.close);
+    await tester.pumpWidget(SekretMidgetApp(documentLibrary: library));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Import pasted text'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('import-title')),
+      'Fictional failing policy',
+    );
+    await tester.enterText(find.byKey(const Key('import-text')), _policyText);
+    await tester.tap(find.widgetWithText(FilledButton, 'Import document'));
+    await tester.pumpAndSettle();
+
+    expect(_stageStatus('Extracted complete'), findsOneWidget);
+    expect(_stageStatus('Chunked complete'), findsOneWidget);
+    expect(_stageStatus('Embedded pending'), findsOneWidget);
+    expect(_stageStatus('Indexed pending'), findsOneWidget);
   });
 
   testWidgets(
@@ -218,4 +313,38 @@ void _useWideTestSurface(WidgetTester tester) {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = const Size(1200, 900);
   addTearDown(tester.view.reset);
+}
+
+Finder _stageStatus(String label) {
+  return find.byWidgetPredicate(
+    (widget) => widget is Semantics && widget.properties.label == label,
+  );
+}
+
+final class _ControllableLlmBackend implements LlmBackend {
+  final _answer = Completer<GeneratedAnswer>();
+
+  void complete(String answer) => _answer.complete(
+    GeneratedAnswer(text: answer, supportingEvidenceIndex: 0),
+  );
+
+  @override
+  Future<LlmAvailability> availability() async => const Available();
+
+  @override
+  Future<GeneratedAnswer> generate({
+    required String question,
+    required List<String> evidence,
+  }) {
+    return _answer.future;
+  }
+}
+
+final class _ThrowingEmbedder implements Embedder {
+  const _ThrowingEmbedder();
+
+  @override
+  Future<List<double>> embed(String text) {
+    throw StateError('synthetic embedding failure');
+  }
 }

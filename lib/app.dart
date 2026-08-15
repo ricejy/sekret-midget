@@ -20,10 +20,15 @@ final class SekretMidgetApp extends StatefulWidget {
   const SekretMidgetApp({
     super.key,
     this.documentLibrary,
+    this.documentLibraryFuture,
     this.modelAvailability = const Available(),
-  });
+  }) : assert(
+         documentLibrary == null || documentLibraryFuture == null,
+         'Provide either documentLibrary or documentLibraryFuture, not both.',
+       );
 
   final DocumentLibrary? documentLibrary;
+  final Future<DocumentLibrary>? documentLibraryFuture;
   final LlmAvailability modelAvailability;
 
   @override
@@ -42,6 +47,11 @@ final class _SekretMidgetAppState extends State<SekretMidgetApp> {
 
   Future<DocumentLibrary> _resolveLibrary() async {
     if (widget.documentLibrary case final library?) {
+      return library;
+    }
+    if (widget.documentLibraryFuture case final libraryFuture?) {
+      final library = await libraryFuture;
+      _ownedLibrary = library;
       return library;
     }
     final library = await openDocumentLibrary(
@@ -160,6 +170,7 @@ final class _DocumentDeskState extends State<_DocumentDesk> {
   bool _isImporting = false;
   bool _isAsking = false;
   bool _isLoadingLibrary = true;
+  int _answerRequestId = 0;
 
   @override
   void initState() {
@@ -192,9 +203,11 @@ final class _DocumentDeskState extends State<_DocumentDesk> {
 
   void _openImport() {
     setState(() {
+      _answerRequestId += 1;
       _showImport = true;
       _selectedDocument = null;
       _outcome = null;
+      _isAsking = false;
       _importMessage = null;
       _completedImportStages = const [];
       _currentImportStage = null;
@@ -218,12 +231,15 @@ final class _DocumentDeskState extends State<_DocumentDesk> {
       if (!mounted) {
         return;
       }
-      if (progress.stage
-          case ImportStage.extracting ||
-              ImportStage.chunking ||
-              ImportStage.embedding ||
-              ImportStage.indexing) {
-        completed.add(progress.stage);
+      final completedStage = switch (progress.stage) {
+        ImportStage.chunking => ImportStage.extracting,
+        ImportStage.embedding => ImportStage.chunking,
+        ImportStage.indexing => ImportStage.embedding,
+        ImportStage.complete => ImportStage.indexing,
+        ImportStage.extracting || ImportStage.failed => null,
+      };
+      if (completedStage != null && !completed.contains(completedStage)) {
+        completed.add(completedStage);
       }
       setState(() {
         _currentImportStage = progress.stage;
@@ -248,9 +264,11 @@ final class _DocumentDeskState extends State<_DocumentDesk> {
 
   void _selectDocument(LibraryDocument document) {
     setState(() {
+      _answerRequestId += 1;
       _selectedDocument = document;
       _showImport = false;
       _outcome = null;
+      _isAsking = false;
       _questionController.clear();
     });
   }
@@ -261,6 +279,7 @@ final class _DocumentDeskState extends State<_DocumentDesk> {
     if (document == null || question.isEmpty || _isAsking) {
       return;
     }
+    final requestId = ++_answerRequestId;
     setState(() {
       _isAsking = true;
       _outcome = null;
@@ -269,7 +288,12 @@ final class _DocumentDeskState extends State<_DocumentDesk> {
       documentId: document.id,
       question: question,
     );
-    if (!mounted) {
+    if (!mounted || requestId != _answerRequestId) {
+      return;
+    }
+    if (_selectedDocument?.id != document.id ||
+        _questionController.text.trim() != question) {
+      setState(() => _isAsking = false);
       return;
     }
     setState(() {
@@ -307,8 +331,10 @@ final class _DocumentDeskState extends State<_DocumentDesk> {
     }
     setState(() {
       if (_selectedDocument?.id == document.id) {
+        _answerRequestId += 1;
         _selectedDocument = null;
         _outcome = null;
+        _isAsking = false;
       }
     });
     await _loadDocuments();
@@ -773,24 +799,28 @@ final class _StageChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: complete ? const Color(0xFFE4F3EA) : _surface,
-        border: Border.all(color: complete ? const Color(0xFF9CCBAF) : _line),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            complete ? Icons.check_rounded : Icons.more_horiz_rounded,
-            size: 15,
-            color: complete ? const Color(0xFF17613C) : _slate,
-          ),
-          const SizedBox(width: 5),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-        ],
+    return Semantics(
+      label: '$label ${complete ? 'complete' : 'pending'}',
+      container: true,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: complete ? const Color(0xFFE4F3EA) : _surface,
+          border: Border.all(color: complete ? const Color(0xFF9CCBAF) : _line),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              complete ? Icons.check_rounded : Icons.more_horiz_rounded,
+              size: 15,
+              color: complete ? const Color(0xFF17613C) : _slate,
+            ),
+            const SizedBox(width: 5),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+        ),
       ),
     );
   }

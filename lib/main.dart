@@ -7,16 +7,19 @@ import 'app.dart';
 import 'core/library/document_library.dart';
 import 'demo/fake_native_capabilities.dart';
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  runApp(SekretMidgetApp(documentLibraryFuture: _openPersistentLibrary()));
+}
+
+Future<DocumentLibrary> _openPersistentLibrary() async {
   final supportDirectory = await getApplicationSupportDirectory();
   final databasePath =
       '${supportDirectory.path}${Platform.pathSeparator}sekret-midget.sqlite3';
-  final documentLibrary = await openDocumentLibrary(
+  return openDocumentLibrary(
     databasePath: databasePath,
     embedder: const FakeEmbedder(),
     llmBackend: const FakeLlmBackend(),
     tokenCounter: const FakeTokenCounter(),
   );
-  runApp(SekretMidgetApp(documentLibrary: documentLibrary));
 }

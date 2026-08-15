@@ -277,22 +277,23 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
       return const InsufficientEvidence();
     }
 
-    final evidence = admitted
-        .map((chunk) {
-          final heading = chunk.heading.isEmpty ? '' : '${chunk.heading}\n';
-          return '$heading${chunk.text}';
-        })
-        .join('\n\n');
-    final answer = await _llmBackend.generate(
+    final evidence = admitted.map(_serializeChunk).toList(growable: false);
+    final generation = await _llmBackend.generate(
       question: cleanQuestion,
       evidence: evidence,
     );
-    if (answer == insufficientEvidenceMessage) {
+    if (generation.text == insufficientEvidenceMessage) {
       return const InsufficientEvidence();
     }
-    final source = admitted.first;
+    final sourceIndex = generation.supportingEvidenceIndex;
+    if (sourceIndex == null ||
+        sourceIndex < 0 ||
+        sourceIndex >= admitted.length) {
+      return const InsufficientEvidence();
+    }
+    final source = admitted[sourceIndex];
     return GroundedAnswer(
-      text: answer,
+      text: generation.text,
       citation: Citation(
         passage: source.text,
         page: source.page ?? 0,
@@ -408,19 +409,29 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
         await _tokenCounter.countTokens(instructions) +
         await _tokenCounter.countTokens(question) +
         _answerTokenReservation;
-    var usedTokens = fixedTokens;
     final admitted = <_StoredChunk>[];
     for (final chunk in rankedChunks) {
-      if (usedTokens + chunk.tokenCount > _maximumContextTokens) {
+      final candidateEvidence = [
+        ...admitted,
+        chunk,
+      ].map(_serializeChunk).join('\n\n');
+      final candidateTokens = await _tokenCounter.countTokens(
+        candidateEvidence,
+      );
+      if (fixedTokens + candidateTokens > _maximumContextTokens) {
         continue;
       }
       admitted.add(chunk);
-      usedTokens += chunk.tokenCount;
       if (admitted.length == 4) {
         break;
       }
     }
     return admitted;
+  }
+
+  String _serializeChunk(_StoredChunk chunk) {
+    final heading = chunk.heading.isEmpty ? '' : '${chunk.heading}\n';
+    return '$heading${chunk.text}';
   }
 
   @override
@@ -508,23 +519,38 @@ Future<List<_TextChunk>> _chunkPastedText(
   final sections = _parseSections(text);
   final chunks = <_TextChunk>[];
   for (final section in sections) {
-    final sentences = section.text
-        .split(RegExp(r'(?<=[.!?;])\s+'))
-        .where((sentence) => sentence.trim().isNotEmpty)
-        .toList();
-    final current = <String>[];
+    final sentences = <_SentenceUnit>[];
+    for (final paragraph in section.paragraphs) {
+      final paragraphSentences = paragraph
+          .split(RegExp(r'(?<=[.!?;])\s+'))
+          .where((sentence) => sentence.trim().isNotEmpty)
+          .toList();
+      for (var index = 0; index < paragraphSentences.length; index += 1) {
+        sentences.add(
+          _SentenceUnit(
+            text: paragraphSentences[index].trim(),
+            startsParagraph: index == 0,
+          ),
+        );
+      }
+    }
+    final current = <_SentenceUnit>[];
     var currentTokens = 0;
     for (final sentence in sentences) {
-      final sentenceTokens = await tokenCounter.countTokens(sentence);
+      final sentenceTokens = await tokenCounter.countTokens(sentence.text);
       if (current.isNotEmpty && currentTokens + sentenceTokens > targetTokens) {
         chunks.add(
-          _TextChunk(text: current.join(' ').trim(), heading: section.heading),
+          _TextChunk(text: _joinSentences(current), heading: section.heading),
         );
-        final overlap = <String>[];
+        final overlap = <_SentenceUnit>[];
         var overlapCount = 0;
         for (final prior in current.reversed) {
-          final priorTokens = await tokenCounter.countTokens(prior);
+          final priorTokens = await tokenCounter.countTokens(prior.text);
           if (overlapCount + priorTokens > overlapTokens) {
+            if (overlap.isEmpty) {
+              overlap.insert(0, prior);
+              overlapCount += priorTokens;
+            }
             break;
           }
           overlap.insert(0, prior);
@@ -535,60 +561,104 @@ Future<List<_TextChunk>> _chunkPastedText(
           ..addAll(overlap);
         currentTokens = overlapCount;
       }
-      current.add(sentence.trim());
+      current.add(sentence);
       currentTokens += sentenceTokens;
     }
     if (current.isNotEmpty) {
       chunks.add(
-        _TextChunk(text: current.join(' ').trim(), heading: section.heading),
+        _TextChunk(text: _joinSentences(current), heading: section.heading),
       );
     }
   }
   return chunks;
 }
 
+final class _SentenceUnit {
+  const _SentenceUnit({required this.text, required this.startsParagraph});
+
+  final String text;
+  final bool startsParagraph;
+}
+
+String _joinSentences(List<_SentenceUnit> sentences) {
+  final buffer = StringBuffer();
+  for (var index = 0; index < sentences.length; index += 1) {
+    final sentence = sentences[index];
+    if (index > 0) {
+      buffer.write(sentence.startsParagraph ? '\n\n' : ' ');
+    }
+    buffer.write(sentence.text);
+  }
+  return buffer.toString();
+}
+
 final class _Section {
-  const _Section({required this.heading, required this.text});
+  const _Section({required this.heading, required this.paragraphs});
 
   final String heading;
-  final String text;
+  final List<String> paragraphs;
 }
 
 List<_Section> _parseSections(String text) {
   final sections = <_Section>[];
   var heading = '';
-  final body = <String>[];
+  final paragraphs = <String>[];
+  final paragraphLines = <String>[];
 
-  void flush() {
-    final content = body.join(' ').trim();
-    if (content.isNotEmpty) {
-      sections.add(_Section(heading: heading, text: content));
-      body.clear();
+  void flushParagraph() {
+    final paragraph = paragraphLines.join(' ').trim();
+    if (paragraph.isNotEmpty) {
+      paragraphs.add(paragraph);
+      paragraphLines.clear();
+    }
+  }
+
+  void flushSection() {
+    flushParagraph();
+    if (paragraphs.isNotEmpty) {
+      sections.add(_Section(heading: heading, paragraphs: List.of(paragraphs)));
+      paragraphs.clear();
     }
   }
 
   for (final rawLine in text.split(RegExp(r'\r?\n'))) {
     final line = rawLine.trim();
     if (line.isEmpty) {
+      flushParagraph();
       continue;
     }
     if (_looksLikeHeading(line)) {
-      flush();
+      flushSection();
       heading = line;
     } else {
-      body.add(line);
+      paragraphLines.add(line);
     }
   }
-  flush();
+  flushSection();
   return sections;
 }
 
 bool _looksLikeHeading(String line) {
+  if (line.length > 100 || line.endsWith('.') || line.endsWith(';')) {
+    return false;
+  }
   final letters = line.replaceAll(RegExp('[^A-Za-z]'), '');
-  return line.length <= 100 &&
-      letters.length >= 3 &&
-      letters == letters.toUpperCase() &&
-      !line.endsWith('.');
+  if (letters.length < 3) {
+    return false;
+  }
+  if (letters == letters.toUpperCase()) {
+    return true;
+  }
+  const connectors = {'a', 'an', 'and', 'for', 'of', 'or', 'the', 'to'};
+  final words = RegExp(
+    '[A-Za-z]+',
+  ).allMatches(line).map((match) => match.group(0)!).toList();
+  return words.isNotEmpty &&
+      words.every(
+        (word) =>
+            connectors.contains(word) ||
+            word.codeUnitAt(0) >= 65 && word.codeUnitAt(0) <= 90,
+      );
 }
 
 String _ftsQuery(String question) {

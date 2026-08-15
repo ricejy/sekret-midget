@@ -21,7 +21,8 @@ No third-party dependency or package manager is used.
 2. Select the **GuardrailHarness** target, then **Signing & Capabilities**.
 3. Select your development team. If Xcode reports a bundle-ID collision, replace `com.ricejy.sekretmidget.guardrailharness` with a unique local identifier.
 4. Select the physical iPhone 15 Pro Max as the run destination.
-5. Confirm the project compiles before changing the prompt or fixtures.
+5. Run **Product → Test** and confirm the `GuardrailHarnessTests` suite passes. These tests keep the in-app importer aligned with `validate_guardrail_suite.ps1`, including domain distribution, excerpt-domain matching, excerpt length, sensitive-topic labels, and latency statistics.
+6. Confirm the project compiles before changing the prompt or fixtures.
 
 For an authoritative run:
 

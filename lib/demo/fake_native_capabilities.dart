@@ -18,6 +18,15 @@ final class FakeEmbedder implements Embedder {
       ]),
       _mentionsAny(normalized, const ['salary', 'compensation', 'pay']),
       _mentionsAny(normalized, const ['leave', 'holiday', 'vacation']),
+      _mentionsAny(normalized, const [
+        'incident',
+        'accident',
+        'report',
+        'disclose',
+        'disclosed',
+        'safety officer',
+      ]),
+      _mentionsAny(normalized, const ['equipment', 'protective', 'property']),
     ];
   }
 
@@ -35,15 +44,37 @@ final class FakeLlmBackend implements LlmBackend {
   Future<LlmAvailability> availability() async => modelAvailability;
 
   @override
-  Future<String> generate({
+  Future<GeneratedAnswer> generate({
     required String question,
-    required String evidence,
+    required List<String> evidence,
   }) async {
-    if (evidence.contains("30 days' written notice") &&
-        !question.toLowerCase().contains('fraud')) {
-      return "Either party must give at least 30 days' written notice.";
+    final normalizedQuestion = question.toLowerCase();
+    final terminationIndex = evidence.indexWhere(
+      (passage) => passage.contains("30 days' written notice"),
+    );
+    if (terminationIndex >= 0 &&
+        !normalizedQuestion.contains('fraud') &&
+        (normalizedQuestion.contains('termination') ||
+            normalizedQuestion.contains('end employment') ||
+            normalizedQuestion.contains('notice'))) {
+      return GeneratedAnswer(
+        text: "Either party must give at least 30 days' written notice.",
+        supportingEvidenceIndex: terminationIndex,
+      );
     }
-    return insufficientEvidenceMessage;
+    final incidentIndex = evidence.indexWhere(
+      (passage) => passage.contains('within 14 calendar days'),
+    );
+    if (incidentIndex >= 0 &&
+        (normalizedQuestion.contains('incident') ||
+            normalizedQuestion.contains('accident') ||
+            normalizedQuestion.contains('disclos'))) {
+      return GeneratedAnswer(
+        text: 'An employee must report an incident within 14 calendar days.',
+        supportingEvidenceIndex: incidentIndex,
+      );
+    }
+    return const GeneratedAnswer(text: insufficientEvidenceMessage);
   }
 }
 

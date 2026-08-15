@@ -73,8 +73,9 @@ final class HarnessStore: ObservableObject {
         }.count
         let abstentions = unanswerable.filter { $0.manualGrade == .properAbstention }.count
         let invented = unanswerable.filter { $0.manualGrade == .hallucination }.count
-        let latencies = initial.map(\.latencyMilliseconds).sorted()
-        let median: Int? = latencies.isEmpty ? nil : latencies[latencies.count / 2]
+        let median = medianLatencyMilliseconds(
+            initial.map(\.latencyMilliseconds)
+        )
 
         return GateMetrics(
             answerableCount: answerable.count,

@@ -1,7 +1,17 @@
 abstract interface class LlmBackend {
   Future<LlmAvailability> availability();
 
-  Future<String> generate({required String question, required String evidence});
+  Future<GeneratedAnswer> generate({
+    required String question,
+    required List<String> evidence,
+  });
+}
+
+final class GeneratedAnswer {
+  const GeneratedAnswer({required this.text, this.supportingEvidenceIndex});
+
+  final String text;
+  final int? supportingEvidenceIndex;
 }
 
 sealed class LlmAvailability {

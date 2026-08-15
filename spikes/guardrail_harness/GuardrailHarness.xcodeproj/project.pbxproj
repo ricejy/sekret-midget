@@ -14,7 +14,19 @@
 		A10000000000000000000005 /* HarnessStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* HarnessStore.swift */; };
 		A10000000000000000000006 /* ResultDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* ResultDocument.swift */; };
 		A10000000000000000000007 /* development_suite.json in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* development_suite.json */; };
+		A10000000000000000000008 /* ModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* ModelsTests.swift */; };
+		A10000000000000000000009 /* development_suite.json in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* development_suite.json */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B10000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A70000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A50000000000000000000001;
+			remoteInfo = GuardrailHarness;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		A20000000000000000000001 /* GuardrailHarnessApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuardrailHarnessApp.swift; sourceTree = "<group>"; };
@@ -25,10 +37,19 @@
 		A20000000000000000000006 /* ResultDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultDocument.swift; sourceTree = "<group>"; };
 		A20000000000000000000007 /* development_suite.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = development_suite.json; path = ../../eval/guardrails/development_suite.json; sourceTree = SOURCE_ROOT; };
 		A20000000000000000000008 /* GuardrailHarness.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GuardrailHarness.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000009 /* ModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTests.swift; sourceTree = "<group>"; };
+		A2000000000000000000000A /* GuardrailHarnessTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GuardrailHarnessTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A30000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A30000000000000000000002 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -42,6 +63,7 @@
 			isa = PBXGroup;
 			children = (
 				A40000000000000000000002 /* GuardrailHarness */,
+				A40000000000000000000004 /* GuardrailHarnessTests */,
 				A20000000000000000000007 /* development_suite.json */,
 				A40000000000000000000003 /* Products */,
 			);
@@ -64,8 +86,17 @@
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000008 /* GuardrailHarness.app */,
+				A2000000000000000000000A /* GuardrailHarnessTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000004 /* GuardrailHarnessTests */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000009 /* ModelsTests.swift */,
+			);
+			path = GuardrailHarnessTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -88,6 +119,24 @@
 			productReference = A20000000000000000000008 /* GuardrailHarness.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A50000000000000000000002 /* GuardrailHarnessTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A90000000000000000000003 /* Build configuration list for PBXNativeTarget "GuardrailHarnessTests" */;
+			buildPhases = (
+				A60000000000000000000003 /* Sources */,
+				A30000000000000000000002 /* Frameworks */,
+				A60000000000000000000004 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B20000000000000000000001 /* PBXTargetDependency */,
+			);
+			name = GuardrailHarnessTests;
+			productName = GuardrailHarnessTests;
+			productReference = A2000000000000000000000A /* GuardrailHarnessTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -100,6 +149,10 @@
 				TargetAttributes = {
 					A50000000000000000000001 = {
 						CreatedOnToolsVersion = 26.0;
+					};
+					A50000000000000000000002 = {
+						CreatedOnToolsVersion = 26.0;
+						TestTargetID = A50000000000000000000001;
 					};
 				};
 			};
@@ -117,6 +170,7 @@
 			projectRoot = "";
 			targets = (
 				A50000000000000000000001 /* GuardrailHarness */,
+				A50000000000000000000002 /* GuardrailHarnessTests */,
 			);
 		};
 /* End PBXProject section */
@@ -127,6 +181,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000007 /* development_suite.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A60000000000000000000004 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000009 /* development_suite.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -146,7 +208,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A60000000000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000008 /* ModelsTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B20000000000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A50000000000000000000001 /* GuardrailHarness */;
+			targetProxy = B10000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A80000000000000000000001 /* Debug */ = {
@@ -237,6 +315,36 @@
 			};
 			name = Release;
 		};
+		A80000000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ricejy.sekretmidget.guardrailharness.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/GuardrailHarness.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/GuardrailHarness";
+			};
+			name = Debug;
+		};
+		A80000000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ricejy.sekretmidget.guardrailharness.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/GuardrailHarness.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/GuardrailHarness";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -254,6 +362,15 @@
 			buildConfigurations = (
 				A80000000000000000000003 /* Debug */,
 				A80000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A90000000000000000000003 /* Build configuration list for PBXNativeTarget "GuardrailHarnessTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A80000000000000000000005 /* Debug */,
+				A80000000000000000000006 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -63,15 +63,15 @@ final class DocumentQuestionService {
       return const InsufficientEvidence();
     }
 
-    final answer = await _llmBackend.generate(
+    final generation = await _llmBackend.generate(
       question: question,
-      evidence: bestChunk.text,
+      evidence: [bestChunk.text],
     );
-    if (answer == insufficientEvidenceMessage) {
+    if (generation.text == insufficientEvidenceMessage) {
       return const InsufficientEvidence();
     }
     return GroundedAnswer(
-      text: answer,
+      text: generation.text,
       citation: Citation(
         passage: bestChunk.text,
         page: bestChunk.page,

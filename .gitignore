@@ -5,6 +5,8 @@ spikes/guardrail_harness/private/
 spikes/guardrail_harness/private-results/
 *.screenshots.db
 *.index.db
+*.sqlite3
+*.sqlite3-*
 
 # ---- Secrets ----
 .env

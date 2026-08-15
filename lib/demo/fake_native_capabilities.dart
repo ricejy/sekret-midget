@@ -18,6 +18,15 @@ final class FakeEmbedder implements Embedder {
       ]),
       _mentionsAny(normalized, const ['salary', 'compensation', 'pay']),
       _mentionsAny(normalized, const ['leave', 'holiday', 'vacation']),
+      _mentionsAny(normalized, const [
+        'incident',
+        'accident',
+        'report',
+        'disclose',
+        'disclosed',
+        'safety officer',
+      ]),
+      _mentionsAny(normalized, const ['equipment', 'protective', 'property']),
     ];
   }
 
@@ -42,6 +51,13 @@ final class FakeLlmBackend implements LlmBackend {
     if (evidence.contains("30 days' written notice") &&
         !question.toLowerCase().contains('fraud')) {
       return "Either party must give at least 30 days' written notice.";
+    }
+    final normalizedQuestion = question.toLowerCase();
+    if (evidence.contains('within 14 calendar days') &&
+        (normalizedQuestion.contains('incident') ||
+            normalizedQuestion.contains('accident') ||
+            normalizedQuestion.contains('disclos'))) {
+      return 'An employee must report an incident within 14 calendar days.';
     }
     return insufficientEvidenceMessage;
   }

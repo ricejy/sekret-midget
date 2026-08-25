@@ -11,6 +11,38 @@ import '../question/document_question_service.dart';
 
 enum ImportStage { extracting, chunking, embedding, indexing, complete, failed }
 
+enum RetrievalMode { hybrid, denseOnly }
+
+final class RetrievalConfiguration {
+  const RetrievalConfiguration({
+    required this.targetChunkTokens,
+    required this.overlapTokens,
+    required this.candidateLimit,
+    required this.reciprocalRankConstant,
+    required this.contextPassageLimit,
+    required this.maximumContextTokens,
+    required this.answerTokenReservation,
+  });
+
+  final int targetChunkTokens;
+  final int overlapTokens;
+  final int candidateLimit;
+  final int reciprocalRankConstant;
+  final int contextPassageLimit;
+  final int maximumContextTokens;
+  final int answerTokenReservation;
+}
+
+const productionRetrievalConfiguration = RetrievalConfiguration(
+  targetChunkTokens: 250,
+  overlapTokens: 38,
+  candidateLimit: 20,
+  reciprocalRankConstant: 60,
+  contextPassageLimit: 4,
+  maximumContextTokens: 4096,
+  answerTokenReservation: 512,
+);
+
 final class ImportProgress {
   const ImportProgress({required this.stage, this.document, this.message});
 
@@ -31,6 +63,25 @@ final class LibraryDocument {
   final DateTime importedAt;
 }
 
+final class RetrievedEvidence {
+  const RetrievedEvidence({
+    required this.chunkId,
+    required this.text,
+    required this.heading,
+    required this.page,
+  });
+
+  final int chunkId;
+  final String text;
+  final String heading;
+  final int? page;
+
+  String get serializedText {
+    final serializedHeading = heading.isEmpty ? '' : '$heading\n';
+    return '$serializedHeading$text';
+  }
+}
+
 abstract interface class DocumentLibrary {
   EmbeddingModelStatus get embeddingModelStatus;
 
@@ -40,6 +91,12 @@ abstract interface class DocumentLibrary {
   });
 
   Future<List<LibraryDocument>> listDocuments();
+
+  Future<List<RetrievedEvidence>> retrieveEvidence({
+    required String documentId,
+    required String question,
+    RetrievalMode mode = RetrievalMode.hybrid,
+  });
 
   Future<DocumentQuestionOutcome> ask({
     required String documentId,
@@ -84,9 +141,6 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
     this.embeddingModelStatus,
   );
 
-  static const _answerTokenReservation = 512;
-  static const _maximumContextTokens = 4096;
-  static const _retrievalLimit = 20;
   static var _idSequence = 0;
 
   final Database _database;
@@ -279,25 +333,22 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
       return const InsufficientEvidence();
     }
 
-    final lexicalRanks = _lexicalRanks(documentId, cleanQuestion);
-    final List<int> denseRanks;
+    final List<RetrievedEvidence> admitted;
     try {
-      denseRanks = await _denseRanks(documentId, cleanQuestion);
+      admitted = await retrieveEvidence(
+        documentId: documentId,
+        question: cleanQuestion,
+      );
     } on EmbeddingException catch (error) {
       return RetrievalUnavailable(_embeddingRetrievalMessage(error.code));
     }
-    final fusedIds = _fuseRanks(lexicalRanks, denseRanks);
-    if (fusedIds.isEmpty) {
-      return const InsufficientEvidence();
-    }
-
-    final rankedChunks = _loadChunks(fusedIds);
-    final admitted = await _assembleContext(cleanQuestion, rankedChunks);
     if (admitted.isEmpty) {
       return const InsufficientEvidence();
     }
 
-    final evidence = admitted.map(_serializeChunk).toList(growable: false);
+    final evidence = admitted
+        .map((passage) => passage.serializedText)
+        .toList(growable: false);
     final generation = await _llmBackend.generate(
       question: cleanQuestion,
       evidence: evidence,
@@ -322,6 +373,42 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
     );
   }
 
+  @override
+  Future<List<RetrievedEvidence>> retrieveEvidence({
+    required String documentId,
+    required String question,
+    RetrievalMode mode = RetrievalMode.hybrid,
+  }) async {
+    _ensureOpen();
+    final cleanQuestion = question.trim();
+    if (cleanQuestion.isEmpty || !_documentExists(documentId)) {
+      return const [];
+    }
+
+    final denseRanks = await _denseRanks(documentId, cleanQuestion);
+    final rankedIds = switch (mode) {
+      RetrievalMode.hybrid => _fuseRanks(
+        _lexicalRanks(documentId, cleanQuestion),
+        denseRanks,
+      ),
+      RetrievalMode.denseOnly => denseRanks,
+    };
+    if (rankedIds.isEmpty) {
+      return const [];
+    }
+    final rankedChunks = _loadChunks(rankedIds);
+    final admitted = await _assembleContext(cleanQuestion, rankedChunks);
+    return [
+      for (final chunk in admitted)
+        RetrievedEvidence(
+          chunkId: chunk.id,
+          text: chunk.text,
+          heading: chunk.heading,
+          page: chunk.page,
+        ),
+    ];
+  }
+
   bool _documentExists(String documentId) {
     return _database.select('SELECT 1 FROM documents WHERE id = ? LIMIT 1;', [
       documentId,
@@ -341,7 +428,7 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
         ORDER BY bm25(chunks_fts)
         LIMIT ?;
       ''',
-      [query, documentId, _retrievalLimit],
+      [query, documentId, productionRetrievalConfiguration.candidateLimit],
     );
     return [for (final row in rows) row['chunk_id'] as int];
   }
@@ -374,11 +461,17 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
       }
     }
     scored.sort((left, right) => right.$2.compareTo(left.$2));
-    return [for (final item in scored.take(_retrievalLimit)) item.$1];
+    return [
+      for (final item in scored.take(
+        productionRetrievalConfiguration.candidateLimit,
+      ))
+        item.$1,
+    ];
   }
 
   List<int> _fuseRanks(List<int> lexical, List<int> dense) {
-    const rankConstant = 60;
+    final rankConstant =
+        productionRetrievalConfiguration.reciprocalRankConstant;
     final scores = <int, double>{};
     for (var index = 0; index < lexical.length; index += 1) {
       scores.update(
@@ -396,7 +489,12 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
     }
     final ranked = scores.entries.toList()
       ..sort((left, right) => right.value.compareTo(left.value));
-    return [for (final entry in ranked.take(_retrievalLimit)) entry.key];
+    return [
+      for (final entry in ranked.take(
+        productionRetrievalConfiguration.candidateLimit,
+      ))
+        entry.key,
+    ];
   }
 
   List<_StoredChunk> _loadChunks(List<int> rankedIds) {
@@ -431,7 +529,7 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
     final fixedTokens =
         await _tokenCounter.countTokens(instructions) +
         await _tokenCounter.countTokens(question) +
-        _answerTokenReservation;
+        productionRetrievalConfiguration.answerTokenReservation;
     final admitted = <_StoredChunk>[];
     for (final chunk in rankedChunks) {
       final candidateEvidence = [
@@ -441,11 +539,13 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
       final candidateTokens = await _tokenCounter.countTokens(
         candidateEvidence,
       );
-      if (fixedTokens + candidateTokens > _maximumContextTokens) {
+      if (fixedTokens + candidateTokens >
+          productionRetrievalConfiguration.maximumContextTokens) {
         continue;
       }
       admitted.add(chunk);
-      if (admitted.length == 4) {
+      if (admitted.length ==
+          productionRetrievalConfiguration.contextPassageLimit) {
         break;
       }
     }
@@ -557,8 +657,8 @@ Future<List<_TextChunk>> _chunkPastedText(
   String text,
   TokenCounter tokenCounter,
 ) async {
-  const targetTokens = 250;
-  const overlapTokens = 38;
+  final targetTokens = productionRetrievalConfiguration.targetChunkTokens;
+  final overlapTokens = productionRetrievalConfiguration.overlapTokens;
   final sections = _parseSections(text);
   final chunks = <_TextChunk>[];
   for (final section in sections) {

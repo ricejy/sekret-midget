@@ -32,3 +32,7 @@ On iOS, sentence embeddings come from Apple's Natural Language framework through
 Windows development uses a deterministic fake embedding implementation so quantization, persistence, dense retrieval, and reciprocal-rank fusion remain portable and testable. Production token-counting and language-model adapters are still pending. The SwiftUI guardrail harness under `spikes/` remains disposable and independent of the Flutter application.
 
 Library data is stored in the platform application-support directory as `sekret-midget.sqlite3`. Delete removes the selected document together with its chunks, search index entries, and vectors.
+
+## Retrieval quality benchmark
+
+The repository includes a labeled, entirely fictional contract-and-policy corpus for measuring recall@4 through the production chunking and retrieval path. It compares hybrid retrieval with dense-only retrieval using the same fixtures and query strings. See [the retrieval evaluation runbook](docs/evaluation/retrieval-quality.md) for portable and physical-iPhone commands, configuration details, and the recorded baseline.

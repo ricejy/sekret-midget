@@ -26,6 +26,10 @@ void main() {
       await tester.pumpWidget(SekretMidgetApp(documentLibrary: library));
       await tester.pumpAndSettle();
 
+      expect(
+        find.text('Deterministic fake · en · 5 dimensions · revision 1'),
+        findsOneWidget,
+      );
       expect(find.text('No documents yet'), findsOneWidget);
       expect(find.byKey(const Key('question-field')), findsNothing);
       await tester.tap(find.widgetWithText(FilledButton, 'Import pasted text'));

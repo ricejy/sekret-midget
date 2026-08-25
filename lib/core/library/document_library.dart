@@ -32,6 +32,8 @@ final class LibraryDocument {
 }
 
 abstract interface class DocumentLibrary {
+  EmbeddingModelStatus get embeddingModelStatus;
+
   Stream<ImportProgress> importPastedText({
     required String title,
     required String text,
@@ -55,6 +57,10 @@ Future<DocumentLibrary> openDocumentLibrary({
   required LlmBackend llmBackend,
   required TokenCounter tokenCounter,
 }) async {
+  final embeddingModelStatus = switch (embedder) {
+    EmbeddingCapabilityProbe probe => await probe.embeddingModelStatus(),
+    _ => const EmbeddingModelUnreported(),
+  };
   final database = databasePath == ':memory:'
       ? sqlite3.openInMemory()
       : sqlite3.open(databasePath);
@@ -63,6 +69,7 @@ Future<DocumentLibrary> openDocumentLibrary({
     embedder,
     llmBackend,
     tokenCounter,
+    embeddingModelStatus,
   );
   library._createSchema();
   return library;
@@ -74,6 +81,7 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
     this._embedder,
     this._llmBackend,
     this._tokenCounter,
+    this.embeddingModelStatus,
   );
 
   static const _answerTokenReservation = 512;
@@ -85,6 +93,8 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
   final Embedder _embedder;
   final LlmBackend _llmBackend;
   final TokenCounter _tokenCounter;
+  @override
+  final EmbeddingModelStatus embeddingModelStatus;
   bool _isClosed = false;
 
   void _createSchema() {
@@ -171,6 +181,11 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
       yield const ImportProgress(stage: ImportStage.indexing);
       final document = _persistDocument(cleanTitle, preparedChunks);
       yield ImportProgress(stage: ImportStage.complete, document: document);
+    } on EmbeddingException catch (error) {
+      yield ImportProgress(
+        stage: ImportStage.failed,
+        message: _embeddingImportMessage(error.code),
+      );
     } on Object {
       yield const ImportProgress(
         stage: ImportStage.failed,
@@ -265,7 +280,12 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
     }
 
     final lexicalRanks = _lexicalRanks(documentId, cleanQuestion);
-    final denseRanks = await _denseRanks(documentId, cleanQuestion);
+    final List<int> denseRanks;
+    try {
+      denseRanks = await _denseRanks(documentId, cleanQuestion);
+    } on EmbeddingException catch (error) {
+      return RetrievalUnavailable(_embeddingRetrievalMessage(error.code));
+    }
     final fusedIds = _fuseRanks(lexicalRanks, denseRanks);
     if (fusedIds.isEmpty) {
       return const InsufficientEvidence();
@@ -345,6 +365,9 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
       final bytes = row['vector'] as Uint8List;
       final scale = (row['scale'] as num).toDouble();
       final vector = _dequantize(bytes, scale);
+      if (vector.length != questionVector.length) {
+        continue;
+      }
       final score = _cosineSimilarity(questionVector, vector);
       if (score > 0) {
         scored.add((row['chunk_id'] as int, score));
@@ -465,6 +488,26 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
     }
   }
 }
+
+String _embeddingImportMessage(EmbeddingFailureCode code) => switch (code) {
+  EmbeddingFailureCode.unavailable =>
+    'On-device semantic search is unavailable for English on this device.',
+  EmbeddingFailureCode.invalidInput || EmbeddingFailureCode.vectorUnavailable =>
+    'Part of this document could not be embedded on this device. Edit the text and try again.',
+  EmbeddingFailureCode.dimensionMismatch ||
+  EmbeddingFailureCode.bridgeFailure =>
+    'On-device semantic search failed. No document data was saved.',
+};
+
+String _embeddingRetrievalMessage(EmbeddingFailureCode code) => switch (code) {
+  EmbeddingFailureCode.unavailable =>
+    'On-device semantic search is unavailable for English on this device.',
+  EmbeddingFailureCode.invalidInput || EmbeddingFailureCode.vectorUnavailable =>
+    'This question could not be embedded on this device. Edit it and try again.',
+  EmbeddingFailureCode.dimensionMismatch ||
+  EmbeddingFailureCode.bridgeFailure =>
+    'On-device semantic search failed. Try again.',
+};
 
 final class _TextChunk {
   const _TextChunk({required this.text, required this.heading});

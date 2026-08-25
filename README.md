@@ -27,6 +27,8 @@ The app imports pasted text into a persistent, app-private SQLite library. Impor
 
 Retrieval combines SQLite FTS5/BM25 and quantized dense vectors with reciprocal-rank fusion. Only whole chunks that fit the context budget are sent to the on-device answer seam, and grounded answers display an application-owned source citation. Unsupported questions return the fixed insufficient-evidence response.
 
-Production capability adapters are still pending. Windows development uses deterministic fake embedding, token-counting, and language-model implementations; no fake or production native capability may perform network I/O. The SwiftUI guardrail harness under `spikes/` remains disposable and independent of the Flutter application.
+On iOS, sentence embeddings come from Apple's Natural Language framework through a narrow method-channel adapter. The app reports the available English model's runtime dimension and revision, validates every returned vector, and keeps Apple framework types out of Dart. Imports and questions map native failures to explicit, recoverable application outcomes without exposing document text. This embedding path performs no network I/O and continues to work in airplane mode once the operating system provides the model.
+
+Windows development uses a deterministic fake embedding implementation so quantization, persistence, dense retrieval, and reciprocal-rank fusion remain portable and testable. Production token-counting and language-model adapters are still pending. The SwiftUI guardrail harness under `spikes/` remains disposable and independent of the Flutter application.
 
 Library data is stored in the platform application-support directory as `sekret-midget.sqlite3`. Delete removes the selected document together with its chunks, search index entries, and vectors.

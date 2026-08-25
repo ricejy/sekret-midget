@@ -4,8 +4,18 @@ import '../core/platform/ocr_engine.dart';
 import '../core/platform/token_counter.dart';
 import '../core/question/document_question_service.dart';
 
-final class FakeEmbedder implements Embedder {
+final class FakeEmbedder implements Embedder, EmbeddingCapabilityProbe {
   const FakeEmbedder();
+
+  @override
+  Future<EmbeddingModelStatus> embeddingModelStatus() async {
+    return const EmbeddingModelAvailable(
+      implementation: 'Deterministic fake',
+      language: 'en',
+      dimensions: 5,
+      revision: 1,
+    );
+  }
 
   @override
   Future<List<double>> embed(String text) async {

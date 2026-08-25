@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sekret_midget/core/platform/embedder.dart';
+import 'package:sekret_midget/core/platform/llm_backend.dart';
 import 'package:sekret_midget/core/question/document_question_service.dart';
 import 'package:sekret_midget/demo/demo_dependencies.dart';
 import 'package:sekret_midget/demo/fictional_document.dart';
@@ -57,4 +59,55 @@ void main() {
       );
     },
   );
+
+  test(
+    'an embedding failure becomes a recoverable retrieval outcome',
+    () async {
+      final service = DocumentQuestionService(
+        const _UnavailableEmbedder(),
+        const _UnusedBackend(),
+      );
+
+      final outcome = await service.ask(
+        document: fictionalEmploymentAgreement,
+        question: 'How much notice is required?',
+      );
+
+      expect(
+        outcome,
+        isA<RetrievalUnavailable>().having(
+          (result) => result.message,
+          'message',
+          'Semantic search is unavailable.',
+        ),
+      );
+    },
+  );
+}
+
+final class _UnavailableEmbedder implements Embedder {
+  const _UnavailableEmbedder();
+
+  @override
+  Future<List<double>> embed(String text) {
+    throw const EmbeddingException(
+      EmbeddingFailureCode.unavailable,
+      'Semantic search is unavailable.',
+    );
+  }
+}
+
+final class _UnusedBackend implements LlmBackend {
+  const _UnusedBackend();
+
+  @override
+  Future<LlmAvailability> availability() async => const Available();
+
+  @override
+  Future<GeneratedAnswer> generate({
+    required String question,
+    required List<String> evidence,
+  }) {
+    throw StateError('The backend must not be called.');
+  }
 }

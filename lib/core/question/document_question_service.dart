@@ -36,6 +36,12 @@ final class InsufficientEvidence extends DocumentQuestionOutcome {
   String get message => insufficientEvidenceMessage;
 }
 
+final class RetrievalUnavailable extends DocumentQuestionOutcome {
+  const RetrievalUnavailable(this.message);
+
+  final String message;
+}
+
 final class DocumentQuestionService {
   const DocumentQuestionService(this._embedder, this._llmBackend);
 
@@ -43,6 +49,17 @@ final class DocumentQuestionService {
   final LlmBackend _llmBackend;
 
   Future<DocumentQuestionOutcome> ask({
+    required Document document,
+    required String question,
+  }) async {
+    try {
+      return await _askWithEmbeddings(document: document, question: question);
+    } on EmbeddingException catch (error) {
+      return RetrievalUnavailable(error.message);
+    }
+  }
+
+  Future<DocumentQuestionOutcome> _askWithEmbeddings({
     required Document document,
     required String question,
   }) async {

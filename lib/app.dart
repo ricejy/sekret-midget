@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'core/library/document_library.dart';
+import 'core/platform/embedder.dart';
 import 'core/platform/llm_backend.dart';
 import 'core/question/document_question_service.dart';
 import 'demo/fake_native_capabilities.dart';
@@ -346,9 +347,12 @@ final class _DocumentDeskState extends State<_DocumentDesk> {
       body: SafeArea(
         child: Column(
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(24, 20, 24, 18),
-              child: _Header(),
+              child: _Header(
+                embeddingModelStatus:
+                    widget.documentLibrary.embeddingModelStatus,
+              ),
             ),
             const Divider(height: 1, color: _line),
             Expanded(
@@ -421,57 +425,98 @@ final class _DocumentDeskState extends State<_DocumentDesk> {
 }
 
 final class _Header extends StatelessWidget {
-  const _Header();
+  const _Header({required this.embeddingModelStatus});
+
+  final EmbeddingModelStatus embeddingModelStatus;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final embeddingDescription = switch (embeddingModelStatus) {
+      EmbeddingModelAvailable status =>
+        '${status.implementation} · ${status.language} · ${status.dimensions} dimensions · revision ${status.revision}',
+      EmbeddingModelUnavailable status =>
+        '${status.implementation} · ${status.language} unavailable: ${status.reason}',
+      EmbeddingModelUnreported() => 'Embedding capability is not reported.',
+    };
+    final embeddingReady = embeddingModelStatus is EmbeddingModelAvailable;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: _ink,
-            borderRadius: BorderRadius.circular(11),
-          ),
-          child: const Icon(Icons.lock_outline_rounded, color: Colors.white),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'SEKRET MIDGET',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  letterSpacing: 1.8,
+        Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: _ink,
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: const Icon(
+                Icons.lock_outline_rounded,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'SEKRET MIDGET',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      letterSpacing: 1.8,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Private evidence, answered locally.',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: _slate),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE5F5EC),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                'LOCAL ONLY',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: const Color(0xFF17613C),
                   fontWeight: FontWeight.w800,
+                  letterSpacing: 0.7,
                 ),
               ),
-              const SizedBox(height: 3),
-              Text(
-                'Private evidence, answered locally.',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(color: _slate),
-              ),
-            ],
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE5F5EC),
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Text(
-            'LOCAL ONLY',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: const Color(0xFF17613C),
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.7,
             ),
-          ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Icon(
+              embeddingReady
+                  ? Icons.memory_rounded
+                  : Icons.warning_amber_rounded,
+              size: 16,
+              color: embeddingReady ? const Color(0xFF17613C) : _warningInk,
+            ),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                embeddingDescription,
+                key: const Key('embedding-model-status'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: embeddingReady ? _slate : _warningInk,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -894,7 +939,43 @@ final class _QuestionWorkspace extends StatelessWidget {
           ] else if (outcome case final InsufficientEvidence result) ...[
             const SizedBox(height: 22),
             _InsufficientEvidenceCard(message: result.message),
+          ] else if (outcome case final RetrievalUnavailable result) ...[
+            const SizedBox(height: 22),
+            _RetrievalUnavailableCard(message: result.message),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+final class _RetrievalUnavailableCard extends StatelessWidget {
+  const _RetrievalUnavailableCard({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _warningSurface,
+        border: Border.all(color: const Color(0xFFE5C886)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: _warningInk),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: _warningInk,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
         ],
       ),
     );

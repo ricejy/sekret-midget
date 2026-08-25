@@ -7,8 +7,98 @@ import 'package:sekret_midget/core/platform/llm_backend.dart';
 import 'package:sekret_midget/core/platform/token_counter.dart';
 import 'package:sekret_midget/core/question/document_question_service.dart';
 import 'package:sekret_midget/demo/fake_native_capabilities.dart';
+import 'package:sqlite3/sqlite3.dart';
 
 void main() {
+  test(
+    'reports the active embedding implementation and runtime shape',
+    () async {
+      final library = await openDocumentLibrary(
+        databasePath: ':memory:',
+        embedder: const FakeEmbedder(),
+        llmBackend: const FakeLlmBackend(),
+        tokenCounter: const FakeTokenCounter(),
+      );
+      addTearDown(library.close);
+
+      expect(
+        library.embeddingModelStatus,
+        isA<EmbeddingModelAvailable>()
+            .having(
+              (status) => status.implementation,
+              'implementation',
+              'Deterministic fake',
+            )
+            .having((status) => status.dimensions, 'dimensions', 5)
+            .having((status) => status.revision, 'revision', 1),
+      );
+    },
+  );
+
+  test(
+    'persists every chunk vector with a bounded quantized round trip',
+    () async {
+      final temporaryDirectory = await Directory.systemTemp.createTemp(
+        'sekret-midget-quantization-',
+      );
+      final databasePath =
+          '${temporaryDirectory.path}${Platform.pathSeparator}library.sqlite3';
+      final library = await openDocumentLibrary(
+        databasePath: databasePath,
+        embedder: const _KnownVectorEmbedder(),
+        llmBackend: const FakeLlmBackend(),
+        tokenCounter: const FakeTokenCounter(),
+      );
+      addTearDown(() async {
+        await library.close();
+        await temporaryDirectory.delete(recursive: true);
+      });
+
+      final progress = await library
+          .importPastedText(
+            title: 'Fictional two-section policy',
+            text: '''
+FIRST SECTION
+
+The first fictional rule applies.
+
+SECOND SECTION
+
+The second fictional rule applies.
+''',
+          )
+          .toList();
+      await library.close();
+
+      final database = sqlite3.open(databasePath);
+      addTearDown(database.close);
+      final rows = database.select('''
+      SELECT chunks.id, chunks.ordinal, vectors.chunk_id, vectors.vector, vectors.scale
+      FROM chunks
+      JOIN vectors ON vectors.chunk_id = chunks.id
+      ORDER BY chunks.ordinal;
+    ''');
+
+      expect(progress.last.stage, ImportStage.complete);
+      expect(rows, hasLength(2));
+      for (final row in rows) {
+        expect(row['chunk_id'], row['id']);
+        final bytes = row['vector'] as List<int>;
+        final scale = (row['scale'] as num).toDouble();
+        final restored = [
+          for (final byte in bytes) (byte > 127 ? byte - 256 : byte) * scale,
+        ];
+        expect(restored, hasLength(_KnownVectorEmbedder.vector.length));
+        for (var index = 0; index < restored.length; index += 1) {
+          expect(
+            restored[index],
+            closeTo(_KnownVectorEmbedder.vector[index], scale / 2 + 1e-12),
+          );
+        }
+      }
+    },
+  );
+
   test(
     'pasted text becomes a selectable document with a grounded answer',
     () async {
@@ -559,6 +649,76 @@ Employees must report a workplace incident to the safety officer within 14 calen
   );
 
   test(
+    'an embedding failure has an explicit message and a retry can recover',
+    () async {
+      final embedder = _RecoveringEmbedder();
+      final library = await openDocumentLibrary(
+        databasePath: ':memory:',
+        embedder: embedder,
+        llmBackend: const FakeLlmBackend(),
+        tokenCounter: const FakeTokenCounter(),
+      );
+      addTearDown(library.close);
+
+      final failed = await library
+          .importPastedText(
+            title: 'Private draft',
+            text: 'PRIVATE MARKER 42 must never appear in an error message.',
+          )
+          .toList();
+      embedder.shouldFail = false;
+      final recovered = await library
+          .importPastedText(
+            title: 'Recovered draft',
+            text: 'A fictional incident must be reported within fourteen days.',
+          )
+          .toList();
+
+      expect(failed.last.stage, ImportStage.failed);
+      expect(
+        failed.last.message,
+        'On-device semantic search is unavailable for English on this device.',
+      );
+      expect(failed.last.message, isNot(contains('PRIVATE MARKER 42')));
+      expect(recovered.last.stage, ImportStage.complete);
+      expect((await library.listDocuments()).single.title, 'Recovered draft');
+    },
+  );
+
+  test('a question embedding failure returns a recoverable outcome', () async {
+    final embedder = _RecoveringEmbedder()..shouldFail = false;
+    final library = await openDocumentLibrary(
+      databasePath: ':memory:',
+      embedder: embedder,
+      llmBackend: const FakeLlmBackend(),
+      tokenCounter: const FakeTokenCounter(),
+    );
+    addTearDown(library.close);
+    await library
+        .importPastedText(
+          title: 'Fictional safety policy',
+          text: 'INCIDENTS\n\nReport every fictional workplace incident.',
+        )
+        .drain<void>();
+    final document = (await library.listDocuments()).single;
+    embedder.shouldFail = true;
+
+    final outcome = await library.ask(
+      documentId: document.id,
+      question: 'When is an incident due?',
+    );
+
+    expect(
+      outcome,
+      isA<RetrievalUnavailable>().having(
+        (result) => result.message,
+        'message',
+        'On-device semantic search is unavailable for English on this device.',
+      ),
+    );
+  });
+
+  test(
     'a chunk is excluded whole when it cannot fit the context budget',
     () async {
       final temporaryDirectory = await Directory.systemTemp.createTemp(
@@ -641,6 +801,30 @@ final class _FailingEmbedder implements Embedder {
   @override
   Future<List<double>> embed(String text) {
     throw StateError('Could not embed: $text');
+  }
+}
+
+final class _KnownVectorEmbedder implements Embedder {
+  const _KnownVectorEmbedder();
+
+  static const vector = <double>[0.25, -0.5, 1];
+
+  @override
+  Future<List<double>> embed(String text) async => vector;
+}
+
+final class _RecoveringEmbedder implements Embedder {
+  bool shouldFail = true;
+
+  @override
+  Future<List<double>> embed(String text) async {
+    if (shouldFail) {
+      throw const EmbeddingException(
+        EmbeddingFailureCode.unavailable,
+        'PRIVATE NATIVE DETAIL',
+      );
+    }
+    return const [1, 0, 0];
   }
 }
 

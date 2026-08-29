@@ -17,5 +17,10 @@ import UIKit
     ) {
       AppleEmbeddingPlugin.register(with: registrar)
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(
+      forPlugin: "AppleFoundationModelsPlugin"
+    ) {
+      AppleFoundationModelsPlugin.register(with: registrar)
+    }
   }
 }

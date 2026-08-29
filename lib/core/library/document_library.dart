@@ -85,6 +85,8 @@ final class RetrievedEvidence {
 abstract interface class DocumentLibrary {
   EmbeddingModelStatus get embeddingModelStatus;
 
+  LlmAvailability get llmAvailability;
+
   Stream<ImportProgress> importPastedText({
     required String title,
     required String text,
@@ -103,6 +105,15 @@ abstract interface class DocumentLibrary {
     required String question,
   });
 
+  Stream<DocumentQuestionUpdate> askStream({
+    required String documentId,
+    required String question,
+  });
+
+  Future<LlmAvailability> refreshLlmAvailability();
+
+  Future<void> openModelSettings();
+
   Future<void> deleteDocument(String documentId);
 
   Future<void> close();
@@ -118,6 +129,7 @@ Future<DocumentLibrary> openDocumentLibrary({
     EmbeddingCapabilityProbe probe => await probe.embeddingModelStatus(),
     _ => const EmbeddingModelUnreported(),
   };
+  final llmAvailability = await llmBackend.availability();
   final database = databasePath == ':memory:'
       ? sqlite3.openInMemory()
       : sqlite3.open(databasePath);
@@ -127,6 +139,7 @@ Future<DocumentLibrary> openDocumentLibrary({
     llmBackend,
     tokenCounter,
     embeddingModelStatus,
+    llmAvailability,
   );
   library._createSchema();
   return library;
@@ -139,6 +152,7 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
     this._llmBackend,
     this._tokenCounter,
     this.embeddingModelStatus,
+    this._llmAvailability,
   );
 
   static var _idSequence = 0;
@@ -149,6 +163,9 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
   final TokenCounter _tokenCounter;
   @override
   final EmbeddingModelStatus embeddingModelStatus;
+  LlmAvailability _llmAvailability;
+  @override
+  LlmAvailability get llmAvailability => _llmAvailability;
   bool _isClosed = false;
 
   void _createSchema() {
@@ -327,10 +344,28 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
     required String documentId,
     required String question,
   }) async {
+    DocumentQuestionOutcome outcome = const InsufficientEvidence();
+    await for (final update in askStream(
+      documentId: documentId,
+      question: question,
+    )) {
+      if (update case AnswerCompleted(outcome: final completedOutcome)) {
+        outcome = completedOutcome;
+      }
+    }
+    return outcome;
+  }
+
+  @override
+  Stream<DocumentQuestionUpdate> askStream({
+    required String documentId,
+    required String question,
+  }) async* {
     _ensureOpen();
     final cleanQuestion = question.trim();
     if (cleanQuestion.isEmpty || !_documentExists(documentId)) {
-      return const InsufficientEvidence();
+      yield const AnswerCompleted(InsufficientEvidence());
+      return;
     }
 
     final List<RetrievedEvidence> admitted;
@@ -340,37 +375,96 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
         question: cleanQuestion,
       );
     } on EmbeddingException catch (error) {
-      return RetrievalUnavailable(_embeddingRetrievalMessage(error.code));
+      yield AnswerCompleted(
+        RetrievalUnavailable(_embeddingRetrievalMessage(error.code)),
+      );
+      return;
     }
     if (admitted.isEmpty) {
-      return const InsufficientEvidence();
+      yield const AnswerCompleted(InsufficientEvidence());
+      return;
     }
 
     final evidence = admitted
         .map((passage) => passage.serializedText)
         .toList(growable: false);
-    final generation = await _llmBackend.generate(
+    final prompt = buildGuardrailV1Prompt(
       question: cleanQuestion,
       evidence: evidence,
     );
-    if (generation.text == insufficientEvidenceMessage) {
-      return const InsufficientEvidence();
+    String? streamedAnswer;
+    try {
+      await for (final snapshot in _llmBackend.generate(
+        question: cleanQuestion,
+        evidence: evidence,
+        prompt: prompt,
+      )) {
+        final cleanSnapshot = snapshot.trim();
+        if (cleanSnapshot.isEmpty) {
+          continue;
+        }
+        streamedAnswer = cleanSnapshot;
+        if (_supportingEvidenceIndex(
+              cleanSnapshot,
+              admitted,
+              question: cleanQuestion,
+            ) !=
+            null) {
+          yield AnswerTextUpdate(cleanSnapshot);
+        }
+      }
+    } on LlmException catch (error) {
+      yield AnswerCompleted(answerFailureFor(error.code));
+      return;
     }
-    final sourceIndex = generation.supportingEvidenceIndex;
-    if (sourceIndex == null ||
-        sourceIndex < 0 ||
-        sourceIndex >= admitted.length) {
-      return const InsufficientEvidence();
+    if (streamedAnswer == null) {
+      yield const AnswerCompleted(
+        AnswerFailure(
+          kind: AnswerFailureKind.streamFailure,
+          message: 'The on-device answer stopped before completion. Try again.',
+        ),
+      );
+      return;
+    }
+    if (streamedAnswer == insufficientEvidenceMessage) {
+      yield const AnswerCompleted(InsufficientEvidence());
+      return;
+    }
+    final sourceIndex = _supportingEvidenceIndex(
+      streamedAnswer,
+      admitted,
+      question: cleanQuestion,
+    );
+    if (sourceIndex == null) {
+      yield const AnswerCompleted(InsufficientEvidence());
+      return;
     }
     final source = admitted[sourceIndex];
-    return GroundedAnswer(
-      text: generation.text,
-      citation: Citation(
-        passage: source.text,
-        page: source.page ?? 0,
-        heading: source.heading,
+    yield AnswerCompleted(
+      GroundedAnswer(
+        text: streamedAnswer,
+        citation: Citation(
+          passage: source.text,
+          page: source.page ?? 0,
+          heading: source.heading,
+        ),
       ),
     );
+  }
+
+  @override
+  Future<LlmAvailability> refreshLlmAvailability() async {
+    _ensureOpen();
+    _llmAvailability = await _llmBackend.availability();
+    return _llmAvailability;
+  }
+
+  @override
+  Future<void> openModelSettings() async {
+    _ensureOpen();
+    if (_llmBackend case final LlmSettingsController controller) {
+      await controller.openSettings();
+    }
   }
 
   @override
@@ -524,23 +618,33 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
     String question,
     List<_StoredChunk> rankedChunks,
   ) async {
-    const instructions =
-        'Answer only from the supplied document evidence. If it is insufficient, abstain.';
-    final fixedTokens =
-        await _tokenCounter.countTokens(instructions) +
-        await _tokenCounter.countTokens(question) +
-        productionRetrievalConfiguration.answerTokenReservation;
+    final contextProbe = _tokenCounter is ModelContextProbe
+        ? _tokenCounter as ModelContextProbe
+        : null;
+    final contextLimit = contextProbe == null
+        ? productionRetrievalConfiguration.maximumContextTokens
+        : await contextProbe.contextWindowSize();
+    final instructionTokens = contextProbe == null
+        ? await _tokenCounter.countTokens(guardrailV1Instructions)
+        : await contextProbe.countInstructionTokens(guardrailV1Instructions);
     final admitted = <_StoredChunk>[];
     for (final chunk in rankedChunks) {
       final candidateEvidence = [
         ...admitted,
         chunk,
-      ].map(_serializeChunk).join('\n\n');
-      final candidateTokens = await _tokenCounter.countTokens(
-        candidateEvidence,
+      ].map(_serializeChunk).toList(growable: false);
+      final candidatePrompt = buildGuardrailV1Prompt(
+        question: question,
+        evidence: candidateEvidence,
       );
-      if (fixedTokens + candidateTokens >
-          productionRetrievalConfiguration.maximumContextTokens) {
+      final promptTokens = contextProbe == null
+          ? await _tokenCounter.countTokens(candidatePrompt)
+          : await contextProbe.countPromptTokens(candidatePrompt);
+      final totalTokens =
+          instructionTokens +
+          promptTokens +
+          productionRetrievalConfiguration.answerTokenReservation;
+      if (totalTokens > contextLimit) {
         continue;
       }
       admitted.add(chunk);
@@ -587,6 +691,60 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
       throw StateError('The document library is closed.');
     }
   }
+}
+
+int? _supportingEvidenceIndex(
+  String answer,
+  List<RetrievedEvidence> evidence, {
+  required String question,
+}) {
+  final questionTerms = _attributionTerms(question);
+  final answerTerms = _attributionTerms(answer).difference(questionTerms);
+  if (answerTerms.isEmpty) {
+    return null;
+  }
+  var bestIndex = 0;
+  var bestScore = 0;
+  for (var index = 0; index < evidence.length; index += 1) {
+    final passageTerms = _attributionTerms(evidence[index].serializedText);
+    final score = answerTerms.where(passageTerms.contains).length;
+    if (score > bestScore) {
+      bestIndex = index;
+      bestScore = score;
+    }
+  }
+  return bestScore == 0 ? null : bestIndex;
+}
+
+Set<String> _attributionTerms(String text) {
+  const ignored = {
+    'a',
+    'an',
+    'and',
+    'are',
+    'as',
+    'at',
+    'be',
+    'by',
+    'for',
+    'from',
+    'in',
+    'is',
+    'it',
+    'of',
+    'on',
+    'or',
+    'that',
+    'the',
+    'this',
+    'to',
+    'was',
+    'with',
+  };
+  return {
+    for (final match in RegExp(r'[a-z0-9]+').allMatches(text.toLowerCase()))
+      if (!ignored.contains(match.group(0))) match.group(0)!,
+  };
 }
 
 String _embeddingImportMessage(EmbeddingFailureCode code) => switch (code) {

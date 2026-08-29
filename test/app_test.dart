@@ -127,6 +127,48 @@ void main() {
     expect(find.text('Document B'), findsWidgets);
   });
 
+  testWidgets('answer snapshots are visible before grounded completion', (
+    tester,
+  ) async {
+    _useWideTestSurface(tester);
+    final backend = _ControllableLlmBackend();
+    final library = await openDocumentLibrary(
+      databasePath: ':memory:',
+      embedder: const FakeEmbedder(),
+      llmBackend: backend,
+      tokenCounter: const FakeTokenCounter(),
+    );
+    addTearDown(library.close);
+    await library
+        .importPastedText(title: _policyTitle, text: _policyText)
+        .drain<void>();
+    await tester.pumpWidget(SekretMidgetApp(documentLibrary: library));
+    await tester.pumpAndSettle();
+    await _selectPolicy(tester);
+    await tester.enterText(
+      find.byKey(const Key('question-field')),
+      'When must an incident be reported?',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Ask document'));
+    await tester.pump();
+
+    backend.emit('An employee must report');
+    await tester.pump();
+
+    expect(find.byKey(const Key('streaming-answer')), findsOneWidget);
+    expect(find.text('An employee must report'), findsOneWidget);
+    expect(find.text('GROUNDED ANSWER'), findsNothing);
+
+    backend.complete(
+      'An employee must report an incident within 14 calendar days.',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('streaming-answer')), findsNothing);
+    expect(find.text('GROUNDED ANSWER'), findsOneWidget);
+    expect(find.text('INCIDENT REPORTING'), findsOneWidget);
+  });
+
   testWidgets('a persistent library startup failure is shown in the app', (
     tester,
   ) async {
@@ -326,21 +368,25 @@ Finder _stageStatus(String label) {
 }
 
 final class _ControllableLlmBackend implements LlmBackend {
-  final _answer = Completer<GeneratedAnswer>();
+  final _answer = StreamController<String>();
 
-  void complete(String answer) => _answer.complete(
-    GeneratedAnswer(text: answer, supportingEvidenceIndex: 0),
-  );
+  void emit(String answer) => _answer.add(answer);
+
+  void complete(String answer) {
+    _answer.add(answer);
+    unawaited(_answer.close());
+  }
 
   @override
   Future<LlmAvailability> availability() async => const Available();
 
   @override
-  Future<GeneratedAnswer> generate({
+  Stream<String> generate({
     required String question,
     required List<String> evidence,
+    required String prompt,
   }) {
-    return _answer.future;
+    return _answer.stream;
   }
 }
 

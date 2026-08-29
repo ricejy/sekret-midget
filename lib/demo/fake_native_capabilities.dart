@@ -54,10 +54,11 @@ final class FakeLlmBackend implements LlmBackend {
   Future<LlmAvailability> availability() async => modelAvailability;
 
   @override
-  Future<GeneratedAnswer> generate({
+  Stream<String> generate({
     required String question,
     required List<String> evidence,
-  }) async {
+    required String prompt,
+  }) async* {
     final normalizedQuestion = question.toLowerCase();
     final terminationIndex = evidence.indexWhere(
       (passage) => passage.contains("30 days' written notice"),
@@ -67,10 +68,8 @@ final class FakeLlmBackend implements LlmBackend {
         (normalizedQuestion.contains('termination') ||
             normalizedQuestion.contains('end employment') ||
             normalizedQuestion.contains('notice'))) {
-      return GeneratedAnswer(
-        text: "Either party must give at least 30 days' written notice.",
-        supportingEvidenceIndex: terminationIndex,
-      );
+      yield "Either party must give at least 30 days' written notice.";
+      return;
     }
     final incidentIndex = evidence.indexWhere(
       (passage) => passage.contains('within 14 calendar days'),
@@ -79,12 +78,10 @@ final class FakeLlmBackend implements LlmBackend {
         (normalizedQuestion.contains('incident') ||
             normalizedQuestion.contains('accident') ||
             normalizedQuestion.contains('disclos'))) {
-      return GeneratedAnswer(
-        text: 'An employee must report an incident within 14 calendar days.',
-        supportingEvidenceIndex: incidentIndex,
-      );
+      yield 'An employee must report an incident within 14 calendar days.';
+      return;
     }
-    return const GeneratedAnswer(text: insufficientEvidenceMessage);
+    yield insufficientEvidenceMessage;
   }
 }
 
@@ -97,11 +94,21 @@ final class FakeOcrEngine implements OcrEngine {
   }
 }
 
-final class FakeTokenCounter implements TokenCounter {
+final class FakeTokenCounter implements TokenCounter, ModelContextProbe {
   const FakeTokenCounter();
 
   @override
   Future<int> countTokens(String text) async {
     return text.trim().isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).length;
   }
+
+  @override
+  Future<int> contextWindowSize() async => 4096;
+
+  @override
+  Future<int> countInstructionTokens(String instructions) =>
+      countTokens(instructions);
+
+  @override
+  Future<int> countPromptTokens(String prompt) => countTokens(prompt);
 }

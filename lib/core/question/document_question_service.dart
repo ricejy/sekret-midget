@@ -23,6 +23,22 @@ sealed class DocumentQuestionOutcome {
   const DocumentQuestionOutcome();
 }
 
+sealed class DocumentQuestionUpdate {
+  const DocumentQuestionUpdate();
+}
+
+final class AnswerTextUpdate extends DocumentQuestionUpdate {
+  const AnswerTextUpdate(this.text);
+
+  final String text;
+}
+
+final class AnswerCompleted extends DocumentQuestionUpdate {
+  const AnswerCompleted(this.outcome);
+
+  final DocumentQuestionOutcome outcome;
+}
+
 final class GroundedAnswer extends DocumentQuestionOutcome {
   const GroundedAnswer({required this.text, required this.citation});
 
@@ -39,6 +55,20 @@ final class InsufficientEvidence extends DocumentQuestionOutcome {
 final class RetrievalUnavailable extends DocumentQuestionOutcome {
   const RetrievalUnavailable(this.message);
 
+  final String message;
+}
+
+enum AnswerFailureKind {
+  modelUnavailable,
+  contextOverflow,
+  guardrailViolation,
+  streamFailure,
+}
+
+final class AnswerFailure extends DocumentQuestionOutcome {
+  const AnswerFailure({required this.kind, required this.message});
+
+  final AnswerFailureKind kind;
   final String message;
 }
 
@@ -80,15 +110,34 @@ final class DocumentQuestionService {
       return const InsufficientEvidence();
     }
 
-    final generation = await _llmBackend.generate(
+    final prompt = buildGuardrailV1Prompt(
       question: question,
       evidence: [bestChunk.text],
     );
-    if (generation.text == insufficientEvidenceMessage) {
+    String? generatedText;
+    try {
+      await for (final snapshot in _llmBackend.generate(
+        question: question,
+        evidence: [bestChunk.text],
+        prompt: prompt,
+      )) {
+        generatedText = snapshot;
+      }
+    } on LlmException catch (error) {
+      return answerFailureFor(error.code);
+    }
+    final answer = generatedText?.trim();
+    if (answer == null || answer.isEmpty) {
+      return const AnswerFailure(
+        kind: AnswerFailureKind.streamFailure,
+        message: 'The on-device answer stopped before completion. Try again.',
+      );
+    }
+    if (answer == insufficientEvidenceMessage) {
       return const InsufficientEvidence();
     }
     return GroundedAnswer(
-      text: generation.text,
+      text: answer,
       citation: Citation(
         passage: bestChunk.text,
         page: bestChunk.page,
@@ -97,6 +146,28 @@ final class DocumentQuestionService {
     );
   }
 }
+
+AnswerFailure answerFailureFor(LlmFailureCode code) => switch (code) {
+  LlmFailureCode.unavailable => const AnswerFailure(
+    kind: AnswerFailureKind.modelUnavailable,
+    message:
+        'The on-device model became unavailable. Check its status and try again.',
+  ),
+  LlmFailureCode.contextOverflow => const AnswerFailure(
+    kind: AnswerFailureKind.contextOverflow,
+    message:
+        'The evidence exceeds the on-device model context. Ask a narrower question.',
+  ),
+  LlmFailureCode.guardrailViolation => const AnswerFailure(
+    kind: AnswerFailureKind.guardrailViolation,
+    message:
+        'The on-device model could not transform this document content. Try a narrower factual question.',
+  ),
+  LlmFailureCode.streamFailure => const AnswerFailure(
+    kind: AnswerFailureKind.streamFailure,
+    message: 'The on-device answer stopped before completion. Try again.',
+  ),
+};
 
 double _cosineSimilarity(List<double> left, List<double> right) {
   if (left.length != right.length || left.isEmpty) {

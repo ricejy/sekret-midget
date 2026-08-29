@@ -184,9 +184,10 @@ final class _UnusedBackend implements LlmBackend {
   Future<LlmAvailability> availability() async => const Available();
 
   @override
-  Future<GeneratedAnswer> generate({
+  Stream<String> generate({
     required String question,
     required List<String> evidence,
+    required String prompt,
   }) {
     throw StateError('Retrieval evaluation must not invoke generation.');
   }

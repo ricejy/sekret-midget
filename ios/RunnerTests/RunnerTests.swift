@@ -1,3 +1,5 @@
+import Foundation
+import FoundationModels
 import NaturalLanguage
 import XCTest
 
@@ -112,6 +114,191 @@ final class RunnerTests: XCTestCase {
       cosineSimilarity(question, relevant),
       cosineSimilarity(question, unrelated)
     )
+  }
+
+  func testFoundationModelAvailabilityMappingIsStable() {
+    for status in [
+      FoundationModelAvailabilityStatus.available,
+      .deviceNotEligible,
+      .appleIntelligenceNotEnabled,
+      .modelNotReady,
+    ] {
+      let service = AppleFoundationModelService(
+        runtime: FakeFoundationModelRuntime(status: status)
+      )
+
+      XCTAssertEqual(
+        service.availabilityPayload()["status"] as? String,
+        status.rawValue
+      )
+    }
+  }
+
+  func testFoundationModelContextAndTokenCountingUseTheRuntime() async throws {
+    let runtime = FakeFoundationModelRuntime(
+      status: .available,
+      contextSize: 4_096,
+      tokenCount: 37
+    )
+    let service = AppleFoundationModelService(runtime: runtime)
+
+    XCTAssertEqual(try service.contextSize(), 4_096)
+    let instructionCount = try await service.countTokens(
+      "Instructions",
+      kind: .instructions
+    )
+    let promptCount = try await service.countTokens("Prompt", kind: .prompt)
+    XCTAssertEqual(instructionCount, 37)
+    XCTAssertEqual(promptCount, 37)
+    XCTAssertEqual(runtime.countedKinds, [.instructions, .prompt])
+  }
+
+  func testFoundationModelStreamsFictionalPlainStringAnswer() async throws {
+    let runtime = FakeFoundationModelRuntime(
+      status: .available,
+      snapshots: [
+        "The fictional",
+        "The fictional incident deadline is fourteen days.",
+      ]
+    )
+    let service = AppleFoundationModelService(runtime: runtime)
+    let stream = try service.responseStream(
+      prompt: "<document_excerpt>Fictional policy.</document_excerpt>"
+    )
+    var snapshots: [String] = []
+
+    for try await snapshot in stream {
+      snapshots.append(snapshot)
+    }
+
+    XCTAssertEqual(
+      snapshots,
+      [
+        "The fictional",
+        "The fictional incident deadline is fourteen days.",
+      ]
+    )
+  }
+
+  @available(iOS 26.0, *)
+  func testFoundationModelGenerationErrorsHaveStableBridgeCodes() {
+    let context = LanguageModelSession.GenerationError.Context(
+      debugDescription: "PRIVATE NATIVE DETAIL"
+    )
+
+    XCTAssertEqual(
+      SystemFoundationModelRuntime.map(
+        LanguageModelSession.GenerationError.exceededContextWindowSize(context)
+      ).rawValue,
+      FoundationModelBridgeFailure.contextOverflow.rawValue
+    )
+    XCTAssertEqual(
+      SystemFoundationModelRuntime.map(
+        LanguageModelSession.GenerationError.guardrailViolation(context)
+      ).rawValue,
+      FoundationModelBridgeFailure.guardrailViolation.rawValue
+    )
+    XCTAssertEqual(
+      SystemFoundationModelRuntime.map(
+        LanguageModelSession.GenerationError.decodingFailure(context)
+      ).rawValue,
+      FoundationModelBridgeFailure.streamFailure.rawValue
+    )
+  }
+
+  @available(iOS 26.0, *)
+  func testGuardrailV1ProductionPromptRemainsFrozen() {
+    XCTAssertEqual(SystemFoundationModelRuntime.promptVersion, "guardrail-v1")
+    XCTAssertTrue(
+      SystemFoundationModelRuntime.instructions.contains(
+        "only the supplied document excerpt"
+      )
+    )
+    XCTAssertTrue(
+      SystemFoundationModelRuntime.instructions.contains(
+        "I couldn’t find enough evidence in this document."
+      )
+    )
+  }
+
+  func testDatabaseReceivesCompleteFileProtection() throws {
+    #if targetEnvironment(simulator)
+      throw XCTSkip("iOS file-protection attributes require a physical device.")
+    #else
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+      UUID().uuidString,
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(
+      at: directory,
+      withIntermediateDirectories: true
+    )
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let database = directory.appendingPathComponent("library.sqlite3")
+    FileManager.default.createFile(atPath: database.path, contents: Data())
+
+    try AppleFileProtectionService.protect(
+      directoryPath: directory.path,
+      databasePath: database.path
+    )
+
+    let attributes = try FileManager.default.attributesOfItem(
+      atPath: database.path
+    )
+    XCTAssertEqual(
+      attributes[.protectionKey] as? FileProtectionType,
+      FileProtectionType.complete
+    )
+    #endif
+  }
+}
+
+private final class FakeFoundationModelRuntime: FoundationModelRuntime {
+  init(
+    status: FoundationModelAvailabilityStatus,
+    contextSize: Int = 4_096,
+    tokenCount: Int = 1,
+    snapshots: [String] = [],
+    failure: FoundationModelBridgeFailure? = nil
+  ) {
+    self.status = status
+    self.reportedContextSize = contextSize
+    self.reportedTokenCount = tokenCount
+    self.snapshots = snapshots
+    self.failure = failure
+  }
+
+  let status: FoundationModelAvailabilityStatus
+  let reportedContextSize: Int
+  let reportedTokenCount: Int
+  let snapshots: [String]
+  let failure: FoundationModelBridgeFailure?
+  private(set) var countedKinds: [FoundationModelTokenKind] = []
+
+  func availability() -> FoundationModelAvailabilityStatus { status }
+
+  func contextSize() throws -> Int { reportedContextSize }
+
+  func countTokens(
+    _ text: String,
+    kind: FoundationModelTokenKind
+  ) async throws -> Int {
+    countedKinds.append(kind)
+    if let failure { throw failure }
+    return reportedTokenCount
+  }
+
+  func responseStream(prompt: String) -> AsyncThrowingStream<String, Error> {
+    AsyncThrowingStream { continuation in
+      if let failure {
+        continuation.finish(throwing: failure)
+        return
+      }
+      for snapshot in snapshots {
+        continuation.yield(snapshot)
+      }
+      continuation.finish()
+    }
   }
 }
 

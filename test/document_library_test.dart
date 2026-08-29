@@ -718,6 +718,92 @@ Employees must report a workplace incident to the safety officer within 14 calen
     );
   });
 
+  test('generation failures map to explicit portable outcomes', () async {
+    for (final (code, expectedKind) in [
+      (LlmFailureCode.unavailable, AnswerFailureKind.modelUnavailable),
+      (LlmFailureCode.contextOverflow, AnswerFailureKind.contextOverflow),
+      (LlmFailureCode.guardrailViolation, AnswerFailureKind.guardrailViolation),
+      (LlmFailureCode.streamFailure, AnswerFailureKind.streamFailure),
+    ]) {
+      final library = await openDocumentLibrary(
+        databasePath: ':memory:',
+        embedder: const FakeEmbedder(),
+        llmBackend: _ThrowingLlmBackend(code),
+        tokenCounter: const FakeTokenCounter(),
+      );
+      await library
+          .importPastedText(
+            title: 'Fictional safety policy',
+            text: '''
+INCIDENT REPORTING
+
+Employees must report a workplace incident within 14 calendar days.
+''',
+          )
+          .drain<void>();
+      final document = (await library.listDocuments()).single;
+
+      final outcome = await library.ask(
+        documentId: document.id,
+        question: 'When must an incident be reported?',
+      );
+      await library.close();
+
+      expect(
+        outcome,
+        isA<AnswerFailure>()
+            .having((failure) => failure.kind, 'kind', expectedKind)
+            .having(
+              (failure) => failure.message,
+              'sanitized message',
+              isNot(contains('PRIVATE')),
+            ),
+      );
+    }
+  });
+
+  test(
+    'an unsupported generated claim is normalized to exact abstention',
+    () async {
+      final library = await openDocumentLibrary(
+        databasePath: ':memory:',
+        embedder: const FakeEmbedder(),
+        llmBackend: const _UnsupportedClaimBackend(),
+        tokenCounter: const FakeTokenCounter(),
+      );
+      addTearDown(library.close);
+      await library
+          .importPastedText(
+            title: 'Fictional employment agreement',
+            text: '''
+NOTICE PERIOD
+
+Either fictional party may end employment with forty-five days of written notice.
+''',
+          )
+          .drain<void>();
+      final document = (await library.listDocuments()).single;
+
+      final updates = await library
+          .askStream(
+            documentId: document.id,
+            question:
+                'What color is the manager’s car under the notice period?',
+          )
+          .toList();
+
+      expect(updates.whereType<AnswerTextUpdate>(), isEmpty);
+      expect(
+        updates.whereType<AnswerCompleted>().single.outcome,
+        isA<InsufficientEvidence>().having(
+          (outcome) => outcome.message,
+          'message',
+          insufficientEvidenceMessage,
+        ),
+      );
+    },
+  );
+
   test(
     'a chunk is excluded whole when it cannot fit the context budget',
     () async {
@@ -868,14 +954,12 @@ final class _LaterChunkBackend implements LlmBackend {
   Future<LlmAvailability> availability() async => const Available();
 
   @override
-  Future<GeneratedAnswer> generate({
+  Stream<String> generate({
     required String question,
     required List<String> evidence,
-  }) async {
-    return const GeneratedAnswer(
-      text: 'The incident deadline is fourteen days.',
-      supportingEvidenceIndex: 1,
-    );
+    required String prompt,
+  }) async* {
+    yield 'The incident deadline is fourteen days.';
   }
 }
 
@@ -938,7 +1022,7 @@ final class _HeadingSensitiveTokenCounter implements TokenCounter {
 
   @override
   Future<int> countTokens(String text) async {
-    if (text.startsWith('INCIDENT REPORTING\n')) {
+    if (text.contains('<document_excerpt>\nINCIDENT REPORTING\n')) {
       return 3600;
     }
     if (text.contains('Employees must report')) {
@@ -955,10 +1039,45 @@ final class _FailIfCalledBackend implements LlmBackend {
   Future<LlmAvailability> availability() async => const Available();
 
   @override
-  Future<GeneratedAnswer> generate({
+  Stream<String> generate({
     required String question,
     required List<String> evidence,
+    required String prompt,
   }) {
     throw StateError('The backend must not receive an oversized chunk.');
+  }
+}
+
+final class _ThrowingLlmBackend implements LlmBackend {
+  const _ThrowingLlmBackend(this.code);
+
+  final LlmFailureCode code;
+
+  @override
+  Future<LlmAvailability> availability() async => const Available();
+
+  @override
+  Stream<String> generate({
+    required String question,
+    required List<String> evidence,
+    required String prompt,
+  }) async* {
+    throw LlmException(code, 'PRIVATE NATIVE DETAIL');
+  }
+}
+
+final class _UnsupportedClaimBackend implements LlmBackend {
+  const _UnsupportedClaimBackend();
+
+  @override
+  Future<LlmAvailability> availability() async => const Available();
+
+  @override
+  Stream<String> generate({
+    required String question,
+    required List<String> evidence,
+    required String prompt,
+  }) async* {
+    yield 'The manager’s car is blue.';
   }
 }

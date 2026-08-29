@@ -22,7 +22,7 @@ final class SekretMidgetApp extends StatefulWidget {
     super.key,
     this.documentLibrary,
     this.documentLibraryFuture,
-    this.modelAvailability = const Available(),
+    this.modelAvailability,
   }) : assert(
          documentLibrary == null || documentLibraryFuture == null,
          'Provide either documentLibrary or documentLibraryFuture, not both.',
@@ -30,7 +30,7 @@ final class SekretMidgetApp extends StatefulWidget {
 
   final DocumentLibrary? documentLibrary;
   final Future<DocumentLibrary>? documentLibraryFuture;
-  final LlmAvailability modelAvailability;
+  final LlmAvailability? modelAvailability;
 
   @override
   State<SekretMidgetApp> createState() => _SekretMidgetAppState();
@@ -58,7 +58,9 @@ final class _SekretMidgetAppState extends State<SekretMidgetApp> {
     final library = await openDocumentLibrary(
       databasePath: ':memory:',
       embedder: const FakeEmbedder(),
-      llmBackend: FakeLlmBackend(modelAvailability: widget.modelAvailability),
+      llmBackend: FakeLlmBackend(
+        modelAvailability: widget.modelAvailability ?? const Available(),
+      ),
       tokenCounter: const FakeTokenCounter(),
     );
     _ownedLibrary = library;
@@ -88,7 +90,7 @@ final class _SekretMidgetAppState extends State<SekretMidgetApp> {
           if (snapshot.data case final library?) {
             return _DocumentDesk(
               documentLibrary: library,
-              modelAvailability: widget.modelAvailability,
+              initialModelAvailability: widget.modelAvailability,
             );
           }
           return const Scaffold(
@@ -147,17 +149,18 @@ final class _StartupFailure extends StatelessWidget {
 final class _DocumentDesk extends StatefulWidget {
   const _DocumentDesk({
     required this.documentLibrary,
-    required this.modelAvailability,
+    required this.initialModelAvailability,
   });
 
   final DocumentLibrary documentLibrary;
-  final LlmAvailability modelAvailability;
+  final LlmAvailability? initialModelAvailability;
 
   @override
   State<_DocumentDesk> createState() => _DocumentDeskState();
 }
 
-final class _DocumentDeskState extends State<_DocumentDesk> {
+final class _DocumentDeskState extends State<_DocumentDesk>
+    with WidgetsBindingObserver {
   final _importTitleController = TextEditingController();
   final _importTextController = TextEditingController();
   final _questionController = TextEditingController();
@@ -172,19 +175,41 @@ final class _DocumentDeskState extends State<_DocumentDesk> {
   bool _isAsking = false;
   bool _isLoadingLibrary = true;
   int _answerRequestId = 0;
+  String? _streamedAnswer;
+  late LlmAvailability _modelAvailability;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _modelAvailability =
+        widget.initialModelAvailability ??
+        widget.documentLibrary.llmAvailability;
     unawaited(_loadDocuments());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _importTitleController.dispose();
     _importTextController.dispose();
     _questionController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshModelAvailability());
+    }
+  }
+
+  Future<void> _refreshModelAvailability() async {
+    final availability = await widget.documentLibrary.refreshLlmAvailability();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _modelAvailability = availability);
   }
 
   Future<void> _loadDocuments() async {
@@ -209,6 +234,7 @@ final class _DocumentDeskState extends State<_DocumentDesk> {
       _selectedDocument = null;
       _outcome = null;
       _isAsking = false;
+      _streamedAnswer = null;
       _importMessage = null;
       _completedImportStages = const [];
       _currentImportStage = null;
@@ -270,6 +296,7 @@ final class _DocumentDeskState extends State<_DocumentDesk> {
       _showImport = false;
       _outcome = null;
       _isAsking = false;
+      _streamedAnswer = null;
       _questionController.clear();
     });
   }
@@ -284,23 +311,39 @@ final class _DocumentDeskState extends State<_DocumentDesk> {
     setState(() {
       _isAsking = true;
       _outcome = null;
+      _streamedAnswer = null;
     });
-    final outcome = await widget.documentLibrary.ask(
+    await for (final update in widget.documentLibrary.askStream(
       documentId: document.id,
       question: question,
-    );
-    if (!mounted || requestId != _answerRequestId) {
+    )) {
+      if (!mounted || requestId != _answerRequestId) {
+        return;
+      }
+      if (_selectedDocument?.id != document.id ||
+          _questionController.text.trim() != question) {
+        setState(() => _isAsking = false);
+        return;
+      }
+      setState(() {
+        switch (update) {
+          case AnswerTextUpdate(:final text):
+            _streamedAnswer = text;
+          case AnswerCompleted(:final outcome):
+            _isAsking = false;
+            _streamedAnswer = null;
+            _outcome = outcome;
+        }
+      });
+    }
+  }
+
+  Future<void> _handleAvailabilityAction() async {
+    if (_modelAvailability is AppleIntelligenceNotEnabled) {
+      await widget.documentLibrary.openModelSettings();
       return;
     }
-    if (_selectedDocument?.id != document.id ||
-        _questionController.text.trim() != question) {
-      setState(() => _isAsking = false);
-      return;
-    }
-    setState(() {
-      _isAsking = false;
-      _outcome = outcome;
-    });
+    await _refreshModelAvailability();
   }
 
   Future<void> _confirmDelete(LibraryDocument document) async {
@@ -336,6 +379,7 @@ final class _DocumentDeskState extends State<_DocumentDesk> {
         _selectedDocument = null;
         _outcome = null;
         _isAsking = false;
+        _streamedAnswer = null;
       }
     });
     await _loadDocuments();
@@ -406,16 +450,18 @@ final class _DocumentDeskState extends State<_DocumentDesk> {
       );
     }
     if (_selectedDocument case final document?) {
-      if (widget.modelAvailability is! Available) {
+      if (_modelAvailability is! Available) {
         return _AvailabilityWorkspace(
-          availability: widget.modelAvailability,
+          availability: _modelAvailability,
           document: document,
+          onAction: _handleAvailabilityAction,
         );
       }
       return _QuestionWorkspace(
         document: document,
         questionController: _questionController,
         isAsking: _isAsking,
+        streamedAnswer: _streamedAnswer,
         outcome: _outcome,
         onAsk: _askDocument,
       );
@@ -876,6 +922,7 @@ final class _QuestionWorkspace extends StatelessWidget {
     required this.document,
     required this.questionController,
     required this.isAsking,
+    required this.streamedAnswer,
     required this.outcome,
     required this.onAsk,
   });
@@ -883,6 +930,7 @@ final class _QuestionWorkspace extends StatelessWidget {
   final LibraryDocument document;
   final TextEditingController questionController;
   final bool isAsking;
+  final String? streamedAnswer;
   final DocumentQuestionOutcome? outcome;
   final VoidCallback onAsk;
 
@@ -930,10 +978,19 @@ final class _QuestionWorkspace extends StatelessWidget {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.arrow_forward_rounded),
-              label: Text(isAsking ? 'Checking evidence' : 'Ask document'),
+              label: Text(
+                isAsking && streamedAnswer != null
+                    ? 'Writing answer'
+                    : isAsking
+                    ? 'Checking evidence'
+                    : 'Ask document',
+              ),
             ),
           ),
-          if (outcome case final GroundedAnswer answer) ...[
+          if (streamedAnswer case final answer?) ...[
+            const SizedBox(height: 22),
+            _StreamingAnswerCard(answer: answer),
+          ] else if (outcome case final GroundedAnswer answer) ...[
             const SizedBox(height: 22),
             _GroundedAnswerCard(answer: answer),
           ] else if (outcome case final InsufficientEvidence result) ...[
@@ -942,7 +999,44 @@ final class _QuestionWorkspace extends StatelessWidget {
           ] else if (outcome case final RetrievalUnavailable result) ...[
             const SizedBox(height: 22),
             _RetrievalUnavailableCard(message: result.message),
+          ] else if (outcome case final AnswerFailure result) ...[
+            const SizedBox(height: 22),
+            _RetrievalUnavailableCard(message: result.message),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+final class _StreamingAnswerCard extends StatelessWidget {
+  const _StreamingAnswerCard({required this.answer});
+
+  final String answer;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('streaming-answer'),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _surface,
+        border: Border.all(color: _line),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'ANSWERING ON DEVICE',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: _verificationBlue,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(answer, style: Theme.of(context).textTheme.titleLarge),
         ],
       ),
     );
@@ -1096,10 +1190,12 @@ final class _AvailabilityWorkspace extends StatelessWidget {
   const _AvailabilityWorkspace({
     required this.availability,
     required this.document,
+    required this.onAction,
   });
 
   final LlmAvailability availability;
   final LibraryDocument document;
+  final VoidCallback onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -1152,16 +1248,7 @@ final class _AvailabilityWorkspace extends StatelessWidget {
                 Text(detail, style: const TextStyle(color: _warningInk)),
                 if (action case final label?) ...[
                   const SizedBox(height: 14),
-                  OutlinedButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('$label is fake-backed in this slice.'),
-                        ),
-                      );
-                    },
-                    child: Text(label),
-                  ),
+                  OutlinedButton(onPressed: onAction, child: Text(label)),
                 ],
               ],
             ),

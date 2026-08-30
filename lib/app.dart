@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 
 import 'core/library/document_library.dart';
 import 'core/platform/embedder.dart';
+import 'core/platform/file_selector_pdf_picker.dart';
 import 'core/platform/llm_backend.dart';
+import 'core/platform/pdf_file_picker.dart';
 import 'core/question/document_question_service.dart';
 import 'demo/fake_native_capabilities.dart';
 
@@ -23,6 +25,7 @@ final class SekretMidgetApp extends StatefulWidget {
     this.documentLibrary,
     this.documentLibraryFuture,
     this.modelAvailability,
+    this.pdfFilePicker = const FileSelectorPdfPicker(),
   }) : assert(
          documentLibrary == null || documentLibraryFuture == null,
          'Provide either documentLibrary or documentLibraryFuture, not both.',
@@ -31,6 +34,7 @@ final class SekretMidgetApp extends StatefulWidget {
   final DocumentLibrary? documentLibrary;
   final Future<DocumentLibrary>? documentLibraryFuture;
   final LlmAvailability? modelAvailability;
+  final PdfFilePicker pdfFilePicker;
 
   @override
   State<SekretMidgetApp> createState() => _SekretMidgetAppState();
@@ -91,6 +95,7 @@ final class _SekretMidgetAppState extends State<SekretMidgetApp> {
             return _DocumentDesk(
               documentLibrary: library,
               initialModelAvailability: widget.modelAvailability,
+              pdfFilePicker: widget.pdfFilePicker,
             );
           }
           return const Scaffold(
@@ -150,10 +155,12 @@ final class _DocumentDesk extends StatefulWidget {
   const _DocumentDesk({
     required this.documentLibrary,
     required this.initialModelAvailability,
+    required this.pdfFilePicker,
   });
 
   final DocumentLibrary documentLibrary;
   final LlmAvailability? initialModelAvailability;
+  final PdfFilePicker pdfFilePicker;
 
   @override
   State<_DocumentDesk> createState() => _DocumentDeskState();
@@ -176,6 +183,8 @@ final class _DocumentDeskState extends State<_DocumentDesk>
   bool _isLoadingLibrary = true;
   int _answerRequestId = 0;
   String? _streamedAnswer;
+  SelectedPdfFile? _selectedPdf;
+  ImportCancellationController? _importCancellation;
   late LlmAvailability _modelAvailability;
 
   @override
@@ -238,8 +247,55 @@ final class _DocumentDeskState extends State<_DocumentDesk>
       _importMessage = null;
       _completedImportStages = const [];
       _currentImportStage = null;
+      _selectedPdf = null;
     });
   }
+
+  Future<void> _pickPdf() async {
+    if (_isImporting) {
+      return;
+    }
+    try {
+      final selected = await widget.pdfFilePicker.pickPdf();
+      if (!mounted || selected == null) {
+        return;
+      }
+      final inferredTitle = selected.name.replaceFirst(
+        RegExp(r'\.pdf$', caseSensitive: false),
+        '',
+      );
+      setState(() {
+        _selectedPdf = selected;
+        _importTitleController.text = inferredTitle;
+        _importTextController.clear();
+        _importMessage = null;
+        _completedImportStages = const [];
+        _currentImportStage = null;
+      });
+    } on Object {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _importMessage = 'The PDF picker could not open this file. Try again.';
+        _currentImportStage = ImportStage.failed;
+      });
+    }
+  }
+
+  void _usePastedText() {
+    if (_isImporting) {
+      return;
+    }
+    setState(() {
+      _selectedPdf = null;
+      _importMessage = null;
+      _completedImportStages = const [];
+      _currentImportStage = null;
+    });
+  }
+
+  void _cancelImport() => _importCancellation?.cancel();
 
   Future<void> _importDocument() async {
     if (_isImporting) {
@@ -250,11 +306,23 @@ final class _DocumentDeskState extends State<_DocumentDesk>
       _importMessage = null;
       _completedImportStages = const [];
     });
+    final cancellation = ImportCancellationController();
+    _importCancellation = cancellation;
     final completed = <ImportStage>[];
-    await for (final progress in widget.documentLibrary.importPastedText(
-      title: _importTitleController.text,
-      text: _importTextController.text,
-    )) {
+    final selectedPdf = _selectedPdf;
+    final progressStream = selectedPdf == null
+        ? widget.documentLibrary.importPastedText(
+            title: _importTitleController.text,
+            text: _importTextController.text,
+            cancellation: cancellation,
+          )
+        : widget.documentLibrary.importPdf(
+            title: _importTitleController.text,
+            sourceName: selectedPdf.name,
+            bytes: selectedPdf.bytes,
+            cancellation: cancellation,
+          );
+    await for (final progress in progressStream) {
       if (!mounted) {
         return;
       }
@@ -263,7 +331,9 @@ final class _DocumentDeskState extends State<_DocumentDesk>
         ImportStage.embedding => ImportStage.chunking,
         ImportStage.indexing => ImportStage.embedding,
         ImportStage.complete => ImportStage.indexing,
-        ImportStage.extracting || ImportStage.failed => null,
+        ImportStage.extracting ||
+        ImportStage.failed ||
+        ImportStage.cancelled => null,
       };
       if (completedStage != null && !completed.contains(completedStage)) {
         completed.add(completedStage);
@@ -285,7 +355,10 @@ final class _DocumentDeskState extends State<_DocumentDesk>
       }
     }
     if (mounted) {
-      setState(() => _isImporting = false);
+      setState(() {
+        _isImporting = false;
+        _importCancellation = null;
+      });
     }
   }
 
@@ -446,6 +519,10 @@ final class _DocumentDeskState extends State<_DocumentDesk>
         currentStage: _currentImportStage,
         message: _importMessage,
         isImporting: _isImporting,
+        selectedPdfName: _selectedPdf?.name,
+        onChoosePdf: _pickPdf,
+        onUsePastedText: _usePastedText,
+        onCancel: _cancelImport,
         onImport: _importDocument,
       );
     }
@@ -606,7 +683,7 @@ final class _LibraryPane extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Import pasted text',
+                  tooltip: 'Import document',
                   onPressed: onImport,
                   icon: const Icon(Icons.add_rounded),
                 ),
@@ -629,9 +706,10 @@ final class _LibraryPane extends StatelessWidget {
                     const Text('No documents yet'),
                     const SizedBox(height: 14),
                     FilledButton.icon(
+                      key: const Key('open-import'),
                       onPressed: onImport,
                       icon: const Icon(Icons.content_paste_rounded),
-                      label: const Text('Import pasted text'),
+                      label: const Text('Import document'),
                     ),
                   ],
                 ),
@@ -745,6 +823,10 @@ final class _ImportWorkspace extends StatelessWidget {
     required this.currentStage,
     required this.message,
     required this.isImporting,
+    required this.selectedPdfName,
+    required this.onChoosePdf,
+    required this.onUsePastedText,
+    required this.onCancel,
     required this.onImport,
   });
 
@@ -754,6 +836,10 @@ final class _ImportWorkspace extends StatelessWidget {
   final ImportStage? currentStage;
   final String? message;
   final bool isImporting;
+  final String? selectedPdfName;
+  final VoidCallback onChoosePdf;
+  final VoidCallback onUsePastedText;
+  final VoidCallback onCancel;
   final VoidCallback onImport;
 
   @override
@@ -762,19 +848,46 @@ final class _ImportWorkspace extends StatelessWidget {
       child: ListView(
         children: [
           Text(
-            'Paste a private document',
+            'Import a private document',
             style: Theme.of(
               context,
             ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 7),
           Text(
-            'The text is chunked, embedded, and indexed only in this local library.',
+            'Choose a text-layer PDF or paste text. Extraction, search, and answers stay in this local library.',
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(color: _slate, height: 1.45),
           ),
           const SizedBox(height: 24),
+          OutlinedButton.icon(
+            key: const Key('choose-pdf'),
+            onPressed: isImporting ? null : onChoosePdf,
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            label: const Text('Choose PDF'),
+          ),
+          if (selectedPdfName case final name?) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Icon(Icons.check_circle, color: Color(0xFF17613C)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    name,
+                    key: const Key('selected-pdf-name'),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                TextButton(
+                  onPressed: isImporting ? null : onUsePastedText,
+                  child: const Text('Use pasted text'),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 14),
           TextField(
             key: const Key('import-title'),
             controller: titleController,
@@ -782,31 +895,59 @@ final class _ImportWorkspace extends StatelessWidget {
             decoration: const InputDecoration(labelText: 'Document title'),
           ),
           const SizedBox(height: 14),
-          TextField(
-            key: const Key('import-text'),
-            controller: textController,
-            enabled: !isImporting,
-            minLines: 8,
-            maxLines: 18,
-            decoration: const InputDecoration(
-              labelText: 'Document text',
-              alignLabelWithHint: true,
+          if (selectedPdfName == null)
+            TextField(
+              key: const Key('import-text'),
+              controller: textController,
+              enabled: !isImporting,
+              minLines: 8,
+              maxLines: 18,
+              decoration: const InputDecoration(
+                labelText: 'Document text',
+                alignLabelWithHint: true,
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F6FF),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFC9D9F5)),
+              ),
+              child: const Text(
+                'The PDF text layer will be extracted page by page before indexing.',
+              ),
             ),
-          ),
           const SizedBox(height: 16),
           Align(
             alignment: Alignment.centerRight,
-            child: FilledButton.icon(
-              onPressed: isImporting ? null : onImport,
-              icon: isImporting
-                  ? const SizedBox.square(
-                      dimension: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.lock_outline_rounded),
-              label: Text(
-                isImporting ? 'Importing locally' : 'Import document',
-              ),
+            child: Wrap(
+              spacing: 10,
+              children: [
+                if (isImporting)
+                  OutlinedButton(
+                    onPressed: onCancel,
+                    child: const Text('Cancel import'),
+                  ),
+                FilledButton.icon(
+                  key: const Key('execute-import'),
+                  onPressed: isImporting ? null : onImport,
+                  icon: isImporting
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.lock_outline_rounded),
+                  label: Text(
+                    isImporting
+                        ? 'Importing locally'
+                        : selectedPdfName == null
+                        ? 'Import document'
+                        : 'Import PDF',
+                  ),
+                ),
+              ],
             ),
           ),
           if (currentStage != null || message != null) ...[
@@ -842,7 +983,9 @@ final class _ImportLedger extends StatelessWidget {
       (ImportStage.embedding, 'Embedded'),
       (ImportStage.indexing, 'Indexed'),
     ];
-    final failed = currentStage == ImportStage.failed;
+    final failed =
+        currentStage == ImportStage.failed ||
+        currentStage == ImportStage.cancelled;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(

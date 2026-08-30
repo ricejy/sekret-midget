@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +8,8 @@ import 'package:sekret_midget/app.dart';
 import 'package:sekret_midget/core/library/document_library.dart';
 import 'package:sekret_midget/core/platform/embedder.dart';
 import 'package:sekret_midget/core/platform/llm_backend.dart';
+import 'package:sekret_midget/core/platform/pdf_file_picker.dart';
+import 'package:sekret_midget/core/platform/pdf_text_extractor.dart';
 import 'package:sekret_midget/demo/fake_native_capabilities.dart';
 
 const _policyTitle = 'Fictional Orion Safety Policy';
@@ -32,14 +36,14 @@ void main() {
       );
       expect(find.text('No documents yet'), findsOneWidget);
       expect(find.byKey(const Key('question-field')), findsNothing);
-      await tester.tap(find.widgetWithText(FilledButton, 'Import pasted text'));
+      await tester.tap(find.byKey(const Key('open-import')));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('import-title')),
         _policyTitle,
       );
       await tester.enterText(find.byKey(const Key('import-text')), _policyText);
-      await tester.tap(find.widgetWithText(FilledButton, 'Import document'));
+      await tester.tap(find.byKey(const Key('execute-import')));
       await tester.pumpAndSettle();
 
       expect(find.text('Extracted'), findsOneWidget);
@@ -64,6 +68,104 @@ void main() {
     },
   );
 
+  testWidgets(
+    'user selects a fictional PDF and receives a page-aware grounded answer',
+    (tester) async {
+      _useWideTestSurface(tester);
+      final fixtureBytes = File(
+        'test/fixtures/fictional_text_contract.pdf',
+      ).readAsBytesSync();
+      final extractor = _FixturePdfExtractor();
+      final library = await _openTestLibrary(pdfTextExtractor: extractor);
+      addTearDown(library.close);
+
+      await tester.pumpWidget(
+        SekretMidgetApp(
+          documentLibrary: library,
+          pdfFilePicker: _FixturePdfPicker(fixtureBytes),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('open-import')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('choose-pdf')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('fictional_text_contract.pdf'), findsOneWidget);
+      expect(
+        find.widgetWithText(TextField, 'fictional_text_contract'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('import-text')), findsNothing);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Import PDF'));
+      await tester.pumpAndSettle();
+
+      expect(extractor.sourceName, 'fictional_text_contract.pdf');
+      expect(extractor.receivedBytes, fixtureBytes);
+      expect(_stageStatus('Extracted complete'), findsOneWidget);
+      expect(_stageStatus('Chunked complete'), findsOneWidget);
+      expect(_stageStatus('Embedded complete'), findsOneWidget);
+      expect(_stageStatus('Indexed complete'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(InkWell, 'fictional_text_contract'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('question-field')),
+        'How much notice is required to end employment?',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Ask document'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'Either fictional party must provide forty-five calendar days of written notice.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('NOTICE PERIOD · Page 2'), findsOneWidget);
+    },
+  );
+
+  testWidgets('cancelling PDF extraction leaves no document in the library', (
+    tester,
+  ) async {
+    _useWideTestSurface(tester);
+    final extractor = _BlockingPdfExtractor();
+    final library = await _openTestLibrary(pdfTextExtractor: extractor);
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      SekretMidgetApp(
+        documentLibrary: library,
+        pdfFilePicker: _FixturePdfPicker(
+          Uint8List.fromList(const [0x25, 0x50, 0x44, 0x46]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('open-import')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('choose-pdf')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Import PDF'));
+    await tester.pump();
+    await extractor.started.future;
+
+    expect(
+      find.widgetWithText(OutlinedButton, 'Cancel import'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Cancel import'));
+    extractor.finish();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Import cancelled. No document data was saved.'),
+      findsOneWidget,
+    );
+    expect(await library.listDocuments(), isEmpty);
+  });
+
   testWidgets('the import workspace lays out at iPhone width', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(430, 932);
@@ -73,7 +175,7 @@ void main() {
     await tester.pumpWidget(SekretMidgetApp(documentLibrary: library));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Import pasted text'));
+    await tester.tap(find.byKey(const Key('open-import')));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -199,14 +301,14 @@ void main() {
     addTearDown(library.close);
     await tester.pumpWidget(SekretMidgetApp(documentLibrary: library));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Import pasted text'));
+    await tester.tap(find.byKey(const Key('open-import')));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('import-title')),
       'Fictional failing policy',
     );
     await tester.enterText(find.byKey(const Key('import-text')), _policyText);
-    await tester.tap(find.widgetWithText(FilledButton, 'Import document'));
+    await tester.tap(find.byKey(const Key('execute-import')));
     await tester.pumpAndSettle();
 
     expect(_stageStatus('Extracted complete'), findsOneWidget);
@@ -333,12 +435,15 @@ void main() {
   });
 }
 
-Future<DocumentLibrary> _openTestLibrary() {
+Future<DocumentLibrary> _openTestLibrary({
+  PdfTextExtractor pdfTextExtractor = const UnavailablePdfTextExtractor(),
+}) {
   return openDocumentLibrary(
     databasePath: ':memory:',
     embedder: const FakeEmbedder(),
     llmBackend: const FakeLlmBackend(),
     tokenCounter: const FakeTokenCounter(),
+    pdfTextExtractor: pdfTextExtractor,
   );
 }
 
@@ -396,5 +501,83 @@ final class _ThrowingEmbedder implements Embedder {
   @override
   Future<List<double>> embed(String text) {
     throw StateError('synthetic embedding failure');
+  }
+}
+
+final class _FixturePdfPicker implements PdfFilePicker {
+  const _FixturePdfPicker(this.bytes);
+
+  final Uint8List bytes;
+
+  @override
+  Future<SelectedPdfFile?> pickPdf() async {
+    return SelectedPdfFile(name: 'fictional_text_contract.pdf', bytes: bytes);
+  }
+}
+
+final class _FixturePdfExtractor implements PdfTextExtractor {
+  Uint8List? receivedBytes;
+  String? sourceName;
+
+  @override
+  Future<ExtractedPdf> extract({
+    required Uint8List bytes,
+    required String sourceName,
+    required bool Function() isCancelled,
+  }) async {
+    receivedBytes = bytes;
+    this.sourceName = sourceName;
+    return const ExtractedPdf(
+      pages: [
+        ExtractedPdfPage(
+          pageNumber: 1,
+          text: 'FICTIONAL MERIDIAN EMPLOYMENT AGREEMENT',
+        ),
+        ExtractedPdfPage(
+          pageNumber: 2,
+          text: '''
+NOTICE PERIOD
+
+Either fictional party must provide forty-five calendar days of written notice before ending employment.
+''',
+        ),
+        ExtractedPdfPage(
+          pageNumber: 3,
+          text: '''
+COMPENSATION DATE
+
+Compensation is paid on the final business day of each month.
+''',
+        ),
+      ],
+    );
+  }
+}
+
+final class _BlockingPdfExtractor implements PdfTextExtractor {
+  final started = Completer<void>();
+  final _result = Completer<ExtractedPdf>();
+
+  void finish() {
+    _result.complete(
+      const ExtractedPdf(
+        pages: [
+          ExtractedPdfPage(
+            pageNumber: 1,
+            text: 'NOTICE PERIOD\n\nFictional notice is forty-five days.',
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Future<ExtractedPdf> extract({
+    required Uint8List bytes,
+    required String sourceName,
+    required bool Function() isCancelled,
+  }) {
+    started.complete();
+    return _result.future;
   }
 }

@@ -6,12 +6,15 @@ import 'package:sqlite3/sqlite3.dart';
 
 import '../platform/embedder.dart';
 import '../platform/llm_backend.dart';
+import '../platform/ocr_engine.dart';
+import '../platform/pdf_page_rasterizer.dart';
 import '../platform/pdf_text_extractor.dart';
 import '../platform/token_counter.dart';
 import '../question/document_question_service.dart';
 
 enum ImportStage {
   extracting,
+  ocr,
   chunking,
   embedding,
   indexing,
@@ -20,7 +23,7 @@ enum ImportStage {
   cancelled,
 }
 
-enum DocumentSourceType { pastedText, pdf }
+enum DocumentSourceType { pastedText, pdf, photo }
 
 enum RetrievalMode { hybrid, denseOnly }
 
@@ -123,6 +126,13 @@ abstract interface class DocumentLibrary {
     ImportCancellationController? cancellation,
   });
 
+  Stream<ImportProgress> importPhoto({
+    required String title,
+    required String sourceName,
+    required Uint8List bytes,
+    ImportCancellationController? cancellation,
+  });
+
   Future<List<LibraryDocument>> listDocuments();
 
   Future<List<RetrievedEvidence>> retrieveEvidence({
@@ -156,6 +166,8 @@ Future<DocumentLibrary> openDocumentLibrary({
   required LlmBackend llmBackend,
   required TokenCounter tokenCounter,
   PdfTextExtractor pdfTextExtractor = const UnavailablePdfTextExtractor(),
+  PdfPageRasterizer pdfPageRasterizer = const UnavailablePdfPageRasterizer(),
+  OcrEngine ocrEngine = const UnavailableOcrEngine(),
 }) async {
   final embeddingModelStatus = switch (embedder) {
     EmbeddingCapabilityProbe probe => await probe.embeddingModelStatus(),
@@ -171,6 +183,8 @@ Future<DocumentLibrary> openDocumentLibrary({
     llmBackend,
     tokenCounter,
     pdfTextExtractor,
+    pdfPageRasterizer,
+    ocrEngine,
     embeddingModelStatus,
     llmAvailability,
   );
@@ -185,6 +199,8 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
     this._llmBackend,
     this._tokenCounter,
     this._pdfTextExtractor,
+    this._pdfPageRasterizer,
+    this._ocrEngine,
     this.embeddingModelStatus,
     this._llmAvailability,
   );
@@ -196,6 +212,8 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
   final LlmBackend _llmBackend;
   final TokenCounter _tokenCounter;
   final PdfTextExtractor _pdfTextExtractor;
+  final PdfPageRasterizer _pdfPageRasterizer;
+  final OcrEngine _ocrEngine;
   @override
   final EmbeddingModelStatus embeddingModelStatus;
   LlmAvailability _llmAvailability;
@@ -317,18 +335,67 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
         );
         return;
       }
+      final emptyPageNumbers = [
+        for (final page in extracted.pages)
+          if (page.text.trim().isEmpty) page.pageNumber,
+      ];
+      final recognizedPages = <int, OcrRecognition>{};
+      var lowConfidence = false;
+      if (emptyPageNumbers.isNotEmpty) {
+        yield ImportProgress(
+          stage: ImportStage.ocr,
+          message: emptyPageNumbers.length == extracted.pages.length
+              ? 'No text layer was found. Running on-device OCR.'
+              : 'Some pages have no text layer. Running on-device OCR.',
+        );
+        final rasterizedPages = await _pdfPageRasterizer.rasterize(
+          bytes: bytes,
+          sourceName: cleanSourceName,
+          pageNumbers: emptyPageNumbers,
+          isCancelled: () => cancellation?.isCancelled ?? false,
+        );
+        for (var index = 0; index < rasterizedPages.length; index += 1) {
+          final rasterized = rasterizedPages[index];
+          yield ImportProgress(
+            stage: ImportStage.ocr,
+            message:
+                'Recognizing scanned page ${index + 1} of ${rasterizedPages.length}.',
+          );
+          final recognition = await _ocrEngine.recognize(
+            image: rasterized.image,
+            isCancelled: () => cancellation?.isCancelled ?? false,
+          );
+          if (!_hasUsefulOcrText(recognition.text)) {
+            yield const ImportProgress(
+              stage: ImportStage.failed,
+              message:
+                  'OCR found too little readable text. Check the page orientation and image quality, then retry.',
+            );
+            return;
+          }
+          lowConfidence =
+              lowConfidence || recognition.confidence < _lowOcrConfidence;
+          recognizedPages[rasterized.pageNumber] = recognition;
+        }
+        if (recognizedPages.length != emptyPageNumbers.length ||
+            !emptyPageNumbers.every(recognizedPages.containsKey)) {
+          yield const ImportProgress(
+            stage: ImportStage.failed,
+            message:
+                'One or more scanned PDF pages could not be recognized. No document data was saved.',
+          );
+          return;
+        }
+      }
       final readablePages = [
         for (final page in extracted.pages)
-          if (page.text.trim().isNotEmpty)
-            _SourcePage(text: page.text.trim(), page: page.pageNumber),
+          _SourcePage(
+            text: page.text.trim().isNotEmpty
+                ? page.text.trim()
+                : recognizedPages[page.pageNumber]!.text.trim(),
+            page: page.pageNumber,
+          ),
       ];
-      if (readablePages.isEmpty) {
-        yield const ImportProgress(
-          stage: ImportStage.failed,
-          message: 'No text layer was found. This PDF requires on-device OCR.',
-        );
-        return;
-      }
       yield* _indexExtractedPages(
         title: cleanTitle,
         sourceType: DocumentSourceType.pdf,
@@ -336,6 +403,9 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
         pages: readablePages,
         pageCount: extracted.pages.length,
         cancellation: cancellation,
+        completionMessage: lowConfidence
+            ? 'Import complete, but OCR confidence was low. Verify the cited source before relying on an answer.'
+            : null,
       );
     } on PdfExtractionException catch (error) {
       final cancelled = error.code == PdfExtractionFailureCode.cancelled;
@@ -345,11 +415,89 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
             ? 'Import cancelled. No document data was saved.'
             : _pdfImportMessage(error.code),
       );
+    } on PdfRasterException catch (error) {
+      final cancelled = error.code == PdfRasterFailureCode.cancelled;
+      yield ImportProgress(
+        stage: cancelled ? ImportStage.cancelled : ImportStage.failed,
+        message: cancelled
+            ? 'Import cancelled. No document data was saved.'
+            : _pdfRasterMessage(error.code),
+      );
+    } on OcrException catch (error) {
+      final cancelled = error.code == OcrFailureCode.cancelled;
+      yield ImportProgress(
+        stage: cancelled ? ImportStage.cancelled : ImportStage.failed,
+        message: cancelled
+            ? 'Import cancelled. No document data was saved.'
+            : _ocrImportMessage(error.code),
+      );
     } on Object {
       yield const ImportProgress(
         stage: ImportStage.failed,
         message:
             'The PDF could not be imported. Choose another file and retry.',
+      );
+    }
+  }
+
+  @override
+  Stream<ImportProgress> importPhoto({
+    required String title,
+    required String sourceName,
+    required Uint8List bytes,
+    ImportCancellationController? cancellation,
+  }) async* {
+    _ensureOpen();
+    final cleanTitle = title.trim();
+    final cleanSourceName = sourceName.trim();
+    if (cleanTitle.isEmpty || cleanSourceName.isEmpty || bytes.isEmpty) {
+      yield const ImportProgress(
+        stage: ImportStage.failed,
+        message: 'Choose a document photo and enter a document title.',
+      );
+      return;
+    }
+    yield const ImportProgress(
+      stage: ImportStage.ocr,
+      message: 'Recognizing the document photo on this device.',
+    );
+    try {
+      final recognition = await _ocrEngine.recognize(
+        image: OcrImageInput.encoded(bytes),
+        isCancelled: () => cancellation?.isCancelled ?? false,
+      );
+      if (!_hasUsefulOcrText(recognition.text)) {
+        yield const ImportProgress(
+          stage: ImportStage.failed,
+          message:
+              'OCR found too little readable text. Retake the photo straight-on in better light, then retry.',
+        );
+        return;
+      }
+      yield* _indexExtractedPages(
+        title: cleanTitle,
+        sourceType: DocumentSourceType.photo,
+        sourceBytes: bytes,
+        pages: [_SourcePage(text: recognition.text.trim(), page: 1)],
+        pageCount: 1,
+        cancellation: cancellation,
+        completionMessage: recognition.confidence < _lowOcrConfidence
+            ? 'Import complete, but OCR confidence was low. Verify the cited source before relying on an answer.'
+            : null,
+      );
+    } on OcrException catch (error) {
+      final cancelled = error.code == OcrFailureCode.cancelled;
+      yield ImportProgress(
+        stage: cancelled ? ImportStage.cancelled : ImportStage.failed,
+        message: cancelled
+            ? 'Import cancelled. No document data was saved.'
+            : _ocrImportMessage(error.code),
+      );
+    } on Object {
+      yield const ImportProgress(
+        stage: ImportStage.failed,
+        message:
+            'The document photo could not be imported. Choose another image and retry.',
       );
     }
   }
@@ -361,6 +509,7 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
     required List<_SourcePage> pages,
     required ImportCancellationController? cancellation,
     int pageCount = 0,
+    String? completionMessage,
   }) async* {
     try {
       yield const ImportProgress(stage: ImportStage.chunking);
@@ -420,7 +569,11 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
         sourceBytes: sourceBytes,
         pageCount: pageCount,
       );
-      yield ImportProgress(stage: ImportStage.complete, document: document);
+      yield ImportProgress(
+        stage: ImportStage.complete,
+        document: document,
+        message: completionMessage,
+      );
     } on EmbeddingException catch (error) {
       yield ImportProgress(
         stage: ImportStage.failed,
@@ -429,9 +582,14 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
     } on Object {
       yield ImportProgress(
         stage: ImportStage.failed,
-        message: sourceType == DocumentSourceType.pdf
-            ? 'The PDF could not be imported. Choose another file and retry.'
-            : 'The document could not be imported. Check the text and try again.',
+        message: switch (sourceType) {
+          DocumentSourceType.pdf =>
+            'The PDF could not be imported. Choose another file and retry.',
+          DocumentSourceType.photo =>
+            'The document photo could not be imported. Choose another image and retry.',
+          DocumentSourceType.pastedText =>
+            'The document could not be imported. Check the text and try again.',
+        },
       );
     }
   }
@@ -967,13 +1125,49 @@ String _pdfImportMessage(PdfExtractionFailureCode code) => switch (code) {
     'PDF text extraction failed. Choose another file and retry.',
 };
 
+String _pdfRasterMessage(PdfRasterFailureCode code) => switch (code) {
+  PdfRasterFailureCode.passwordProtected =>
+    'This PDF is password protected. Remove the password and try again.',
+  PdfRasterFailureCode.malformed =>
+    'This scanned PDF is malformed or damaged. Choose another file.',
+  PdfRasterFailureCode.unsupported =>
+    'Scanned PDF OCR is not supported on this device.',
+  PdfRasterFailureCode.cancelled =>
+    'Import cancelled. No document data was saved.',
+  PdfRasterFailureCode.renderingFailed =>
+    'A scanned PDF page could not be prepared for OCR. Try another file.',
+};
+
+String _ocrImportMessage(OcrFailureCode code) => switch (code) {
+  OcrFailureCode.unavailable =>
+    'On-device text recognition is unavailable on this device.',
+  OcrFailureCode.invalidInput =>
+    'The selected image could not be sent to on-device OCR.',
+  OcrFailureCode.decodeFailed =>
+    'The selected image could not be decoded. Choose another image.',
+  OcrFailureCode.recognitionFailed =>
+    'On-device OCR failed. Check the orientation and image quality, then retry.',
+  OcrFailureCode.cancelled => 'Import cancelled. No document data was saved.',
+};
+
+const _lowOcrConfidence = 0.55;
+
+bool _hasUsefulOcrText(String text) {
+  final cleanText = text.trim();
+  return cleanText.length >= 20 &&
+      cleanText.split(RegExp(r'\s+')).where((word) => word.isNotEmpty).length >=
+          4;
+}
+
 String _sourceTypeValue(DocumentSourceType sourceType) => switch (sourceType) {
   DocumentSourceType.pastedText => 'pasted-text',
   DocumentSourceType.pdf => 'pdf',
+  DocumentSourceType.photo => 'photo',
 };
 
 DocumentSourceType _sourceTypeFromValue(String value) => switch (value) {
   'pdf' => DocumentSourceType.pdf,
+  'photo' => DocumentSourceType.photo,
   _ => DocumentSourceType.pastedText,
 };
 

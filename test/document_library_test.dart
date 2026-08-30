@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sekret_midget/core/library/document_library.dart';
 import 'package:sekret_midget/core/platform/embedder.dart';
 import 'package:sekret_midget/core/platform/llm_backend.dart';
+import 'package:sekret_midget/core/platform/ocr_engine.dart';
+import 'package:sekret_midget/core/platform/pdf_page_rasterizer.dart';
 import 'package:sekret_midget/core/platform/pdf_text_extractor.dart';
 import 'package:sekret_midget/core/platform/token_counter.dart';
 import 'package:sekret_midget/core/question/document_question_service.dart';
@@ -395,7 +397,79 @@ Employees must report a workplace incident to the safety officer within 14 calen
     },
   );
 
-  test('an empty PDF text layer requires OCR and persists nothing', () async {
+  test(
+    'an image-only PDF falls back to OCR and preserves page evidence',
+    () async {
+      final fixtureBytes = await File(
+        'test/fixtures/fictional_image_only_contract.pdf',
+      ).readAsBytes();
+      final library = await openDocumentLibrary(
+        databasePath: ':memory:',
+        embedder: const FakeEmbedder(),
+        llmBackend: const FakeLlmBackend(),
+        tokenCounter: const FakeTokenCounter(),
+        pdfTextExtractor: const _TwoPageEmptyPdfExtractor(),
+        pdfPageRasterizer: const _FixturePdfRasterizer(),
+        ocrEngine: const _FixtureOcrEngine(),
+      );
+      addTearDown(library.close);
+
+      final progress = await library
+          .importPdf(
+            title: 'Fictional scanned equipment notice',
+            sourceName: 'fictional_image_only_contract.pdf',
+            bytes: fixtureBytes,
+          )
+          .toList();
+      final document = (await library.listDocuments()).single;
+      final outcome = await library.ask(
+        documentId: document.id,
+        question: 'When must the fictional employee return equipment?',
+      );
+      final pageTwoEvidence = await library.retrieveEvidence(
+        documentId: document.id,
+        question:
+            'When does the fictional service desk record the return after delivery?',
+      );
+
+      expect(progress.map((event) => event.stage), [
+        ImportStage.extracting,
+        ImportStage.ocr,
+        ImportStage.ocr,
+        ImportStage.ocr,
+        ImportStage.chunking,
+        ImportStage.embedding,
+        ImportStage.indexing,
+        ImportStage.complete,
+      ]);
+      expect(document.sourceType, DocumentSourceType.pdf);
+      expect(document.pageCount, 2);
+      expect(
+        outcome,
+        isA<GroundedAnswer>()
+            .having((answer) => answer.citation.page, 'page', 1)
+            .having(
+              (answer) => answer.citation.heading,
+              'heading',
+              'RETURN DEADLINE',
+            ),
+      );
+      expect(
+        pageTwoEvidence,
+        contains(
+          isA<RetrievedEvidence>()
+              .having((evidence) => evidence.page, 'page', 2)
+              .having(
+                (evidence) => evidence.heading,
+                'heading',
+                'ACKNOWLEDGMENT DATE',
+              ),
+        ),
+      );
+    },
+  );
+
+  test('an image-only PDF fails recoverably when OCR is unavailable', () async {
     final library = await openDocumentLibrary(
       databasePath: ':memory:',
       embedder: const FakeEmbedder(),
@@ -414,7 +488,129 @@ Employees must report a workplace incident to the safety officer within 14 calen
         .toList();
 
     expect(progress.last.stage, ImportStage.failed);
-    expect(progress.last.message, contains('requires on-device OCR'));
+    expect(progress.last.message, contains('not supported'));
+    expect(await library.listDocuments(), isEmpty);
+  });
+
+  test('a document photo is OCR indexed with a page-one citation', () async {
+    final fixtureBytes = await File(
+      'test/fixtures/fictional_document_photo.png',
+    ).readAsBytes();
+    final library = await openDocumentLibrary(
+      databasePath: ':memory:',
+      embedder: const FakeEmbedder(),
+      llmBackend: const FakeLlmBackend(),
+      tokenCounter: const FakeTokenCounter(),
+      ocrEngine: const _FixtureOcrEngine(),
+    );
+    addTearDown(library.close);
+
+    final progress = await library
+        .importPhoto(
+          title: 'Fictional equipment return photo',
+          sourceName: 'fictional_document_photo.png',
+          bytes: fixtureBytes,
+        )
+        .toList();
+    final document = (await library.listDocuments()).single;
+    final outcome = await library.ask(
+      documentId: document.id,
+      question: 'When must the fictional employee return equipment?',
+    );
+
+    expect(progress.map((event) => event.stage), [
+      ImportStage.ocr,
+      ImportStage.chunking,
+      ImportStage.embedding,
+      ImportStage.indexing,
+      ImportStage.complete,
+    ]);
+    expect(document.sourceType, DocumentSourceType.photo);
+    expect(document.pageCount, 1);
+    expect(
+      outcome,
+      isA<GroundedAnswer>()
+          .having((answer) => answer.citation.page, 'page', 1)
+          .having(
+            (answer) => answer.citation.heading,
+            'heading',
+            'RETURN DEADLINE',
+          ),
+    );
+  });
+
+  test(
+    'low-confidence OCR is imported with an explicit verification warning',
+    () async {
+      final library = await openDocumentLibrary(
+        databasePath: ':memory:',
+        embedder: const FakeEmbedder(),
+        llmBackend: const FakeLlmBackend(),
+        tokenCounter: const FakeTokenCounter(),
+        ocrEngine: const _FixtureOcrEngine(confidence: 0.3),
+      );
+      addTearDown(library.close);
+
+      final progress = await library
+          .importPhoto(
+            title: 'Fictional low-confidence photo',
+            sourceName: 'low-quality.png',
+            bytes: Uint8List.fromList(const [1, 2, 3]),
+          )
+          .toList();
+
+      expect(progress.last.stage, ImportStage.complete);
+      expect(progress.last.message, contains('OCR confidence was low'));
+      expect(progress.last.message, contains('Verify the cited source'));
+    },
+  );
+
+  test('too little OCR text is recoverable and persists no document', () async {
+    final library = await openDocumentLibrary(
+      databasePath: ':memory:',
+      embedder: const FakeEmbedder(),
+      llmBackend: const FakeLlmBackend(),
+      tokenCounter: const FakeTokenCounter(),
+      ocrEngine: const _ShortOcrEngine(),
+    );
+    addTearDown(library.close);
+
+    final progress = await library
+        .importPhoto(
+          title: 'Fictional unreadable photo',
+          sourceName: 'unreadable.png',
+          bytes: Uint8List.fromList(const [1, 2, 3]),
+        )
+        .toList();
+
+    expect(progress.last.stage, ImportStage.failed);
+    expect(progress.last.message, contains('too little readable text'));
+    expect(progress.last.message, contains('better light'));
+    expect(await library.listDocuments(), isEmpty);
+  });
+
+  test('cancellation during photo OCR persists no partial document', () async {
+    final cancellation = ImportCancellationController();
+    final library = await openDocumentLibrary(
+      databasePath: ':memory:',
+      embedder: const FakeEmbedder(),
+      llmBackend: const FakeLlmBackend(),
+      tokenCounter: const FakeTokenCounter(),
+      ocrEngine: _CancellingOcrEngine(cancellation),
+    );
+    addTearDown(library.close);
+
+    final progress = await library
+        .importPhoto(
+          title: 'Fictional cancelled photo',
+          sourceName: 'cancelled.png',
+          bytes: Uint8List.fromList(const [1, 2, 3]),
+          cancellation: cancellation,
+        )
+        .toList();
+
+    expect(progress.last.stage, ImportStage.cancelled);
+    expect(progress.last.message, contains('No document data was saved'));
     expect(await library.listDocuments(), isEmpty);
   });
 
@@ -1376,6 +1572,113 @@ final class _EmptyPdfExtractor implements PdfTextExtractor {
   }) async {
     return const ExtractedPdf(
       pages: [ExtractedPdfPage(pageNumber: 1, text: '')],
+    );
+  }
+}
+
+final class _TwoPageEmptyPdfExtractor implements PdfTextExtractor {
+  const _TwoPageEmptyPdfExtractor();
+
+  @override
+  Future<ExtractedPdf> extract({
+    required Uint8List bytes,
+    required String sourceName,
+    required bool Function() isCancelled,
+  }) async {
+    return const ExtractedPdf(
+      pages: [
+        ExtractedPdfPage(pageNumber: 1, text: ''),
+        ExtractedPdfPage(pageNumber: 2, text: ''),
+      ],
+    );
+  }
+}
+
+final class _FixturePdfRasterizer implements PdfPageRasterizer {
+  const _FixturePdfRasterizer();
+
+  @override
+  Future<List<RasterizedPdfPage>> rasterize({
+    required Uint8List bytes,
+    required String sourceName,
+    required List<int> pageNumbers,
+    required bool Function() isCancelled,
+  }) async {
+    return [
+      for (final pageNumber in pageNumbers)
+        RasterizedPdfPage(
+          pageNumber: pageNumber,
+          image: OcrImageInput.bgra8888(
+            bytes: Uint8List.fromList([pageNumber, 0, 0, 255]),
+            width: 1,
+            height: 1,
+          ),
+        ),
+    ];
+  }
+}
+
+final class _FixtureOcrEngine implements OcrEngine {
+  const _FixtureOcrEngine({this.confidence = 0.96});
+
+  final double confidence;
+
+  @override
+  Future<OcrRecognition> recognize({
+    required OcrImageInput image,
+    required bool Function() isCancelled,
+  }) async {
+    final pageNumber = image.format == OcrImageFormat.bgra8888
+        ? image.bytes.first
+        : 1;
+    return OcrRecognition(
+      text: pageNumber == 1
+          ? '''
+RETURN DEADLINE
+
+The fictional employee must return all issued equipment within seven calendar days after the final workday.
+
+RETURN LOCATION
+
+Equipment must be delivered to the fictional Aster Workshop service desk at 18 Lantern Avenue.
+'''
+          : '''
+ACKNOWLEDGMENT DATE
+
+The fictional service desk records the return on the next business day after delivery.
+''',
+      confidence: confidence,
+    );
+  }
+}
+
+final class _ShortOcrEngine implements OcrEngine {
+  const _ShortOcrEngine();
+
+  @override
+  Future<OcrRecognition> recognize({
+    required OcrImageInput image,
+    required bool Function() isCancelled,
+  }) async {
+    return const OcrRecognition(text: 'Unreadable', confidence: 0.1);
+  }
+}
+
+final class _CancellingOcrEngine implements OcrEngine {
+  const _CancellingOcrEngine(this.cancellation);
+
+  final ImportCancellationController cancellation;
+
+  @override
+  Future<OcrRecognition> recognize({
+    required OcrImageInput image,
+    required bool Function() isCancelled,
+  }) async {
+    cancellation.cancel();
+    return const OcrRecognition(
+      text:
+          'Fictional recognized text that must never become a queryable document.',
+      confidence: 0.99,
     );
   }
 }

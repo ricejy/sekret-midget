@@ -22,5 +22,10 @@ import UIKit
     ) {
       AppleFoundationModelsPlugin.register(with: registrar)
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(
+      forPlugin: "AppleVisionOcrPlugin"
+    ) {
+      AppleVisionOcrPlugin.register(with: registrar)
+    }
   }
 }

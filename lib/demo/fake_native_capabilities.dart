@@ -71,6 +71,17 @@ final class FakeLlmBackend implements LlmBackend {
       yield "Either party must give at least 30 days' written notice.";
       return;
     }
+    final fictionalPdfNoticeIndex = evidence.indexWhere(
+      (passage) => passage.contains('forty-five calendar days'),
+    );
+    if (fictionalPdfNoticeIndex >= 0 &&
+        (normalizedQuestion.contains('termination') ||
+            normalizedQuestion.contains('end employment') ||
+            normalizedQuestion.contains('notice') ||
+            normalizedQuestion.contains('advance warning'))) {
+      yield 'Either fictional party must provide forty-five calendar days of written notice.';
+      return;
+    }
     final incidentIndex = evidence.indexWhere(
       (passage) => passage.contains('within 14 calendar days'),
     );

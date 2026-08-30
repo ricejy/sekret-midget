@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sekret_midget/core/library/document_library.dart';
 import 'package:sekret_midget/core/platform/embedder.dart';
 import 'package:sekret_midget/core/platform/llm_backend.dart';
+import 'package:sekret_midget/core/platform/pdf_text_extractor.dart';
 import 'package:sekret_midget/core/platform/token_counter.dart';
 import 'package:sekret_midget/core/question/document_question_service.dart';
 import 'package:sekret_midget/demo/fake_native_capabilities.dart';
@@ -32,6 +34,64 @@ void main() {
             .having((status) => status.dimensions, 'dimensions', 5)
             .having((status) => status.revision, 'revision', 1),
       );
+    },
+  );
+
+  test(
+    'upgrades an existing pasted-text library without losing documents',
+    () async {
+      final temporaryDirectory = await Directory.systemTemp.createTemp(
+        'sekret-midget-schema-upgrade-',
+      );
+      final databasePath =
+          '${temporaryDirectory.path}${Platform.pathSeparator}library.sqlite3';
+      addTearDown(() => temporaryDirectory.delete(recursive: true));
+      final legacyDatabase = sqlite3.open(databasePath);
+      legacyDatabase.execute('''
+      CREATE TABLE documents (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        imported_at TEXT NOT NULL
+      );
+    ''');
+      legacyDatabase.execute(
+        '''
+        INSERT INTO documents (id, title, source_type, imported_at)
+        VALUES (?, ?, ?, ?);
+      ''',
+        [
+          'legacy-document',
+          'Fictional legacy policy',
+          'pasted-text',
+          '2026-08-01T00:00:00.000Z',
+        ],
+      );
+      legacyDatabase.close();
+
+      final library = await openDocumentLibrary(
+        databasePath: databasePath,
+        embedder: const FakeEmbedder(),
+        llmBackend: const FakeLlmBackend(),
+        tokenCounter: const FakeTokenCounter(),
+      );
+      final documents = await library.listDocuments();
+      await library.close();
+
+      expect(documents, hasLength(1));
+      expect(documents.single.id, 'legacy-document');
+      expect(documents.single.sourceType, DocumentSourceType.pastedText);
+      expect(documents.single.pageCount, 0);
+
+      final upgradedDatabase = sqlite3.open(databasePath);
+      addTearDown(upgradedDatabase.close);
+      final columns = {
+        for (final row in upgradedDatabase.select(
+          'PRAGMA table_info(documents);',
+        ))
+          row['name'] as String,
+      };
+      expect(columns, containsAll(<String>['source_bytes', 'page_count']));
     },
   );
 
@@ -210,6 +270,189 @@ Employees must report a workplace incident to the safety officer within 14 calen
           'An employee must report an incident within 14 calendar days.',
         ),
       );
+    },
+  );
+
+  test(
+    'PDF import persists its source and preserves page citations through deletion',
+    () async {
+      final temporaryDirectory = await Directory.systemTemp.createTemp(
+        'sekret-midget-pdf-library-',
+      );
+      final databasePath =
+          '${temporaryDirectory.path}${Platform.pathSeparator}library.sqlite3';
+      final fixtureBytes = await File(
+        'test/fixtures/fictional_text_contract.pdf',
+      ).readAsBytes();
+      var library = await openDocumentLibrary(
+        databasePath: databasePath,
+        embedder: const FakeEmbedder(),
+        llmBackend: const FakeLlmBackend(),
+        tokenCounter: const FakeTokenCounter(),
+        pdfTextExtractor: const _FixturePdfExtractor(),
+      );
+      addTearDown(() async {
+        await library.close();
+        await temporaryDirectory.delete(recursive: true);
+      });
+
+      final progress = await library
+          .importPdf(
+            title: 'Fictional Meridian Employment Agreement',
+            sourceName: 'fictional_text_contract.pdf',
+            bytes: fixtureBytes,
+          )
+          .toList();
+      final document = (await library.listDocuments()).single;
+      final outcome = await library.ask(
+        documentId: document.id,
+        question: 'How much advance warning is required to end employment?',
+      );
+      await library.close();
+
+      final persisted = sqlite3.open(databasePath);
+      final sourceRow = persisted.select('''
+        SELECT source_type, length(source_bytes) AS source_size, page_count
+        FROM documents;
+      ''').single;
+      final noticeChunk = persisted.select('''
+        SELECT heading, page, text
+        FROM chunks
+        WHERE heading = 'NOTICE PERIOD';
+      ''').single;
+      persisted.close();
+
+      expect(progress.map((event) => event.stage), [
+        ImportStage.extracting,
+        ImportStage.chunking,
+        ImportStage.embedding,
+        ImportStage.indexing,
+        ImportStage.complete,
+      ]);
+      expect(document.sourceType, DocumentSourceType.pdf);
+      expect(document.pageCount, 3);
+      expect(sourceRow['source_type'], 'pdf');
+      expect(sourceRow['source_size'], fixtureBytes.length);
+      expect(sourceRow['page_count'], 3);
+      expect(noticeChunk['page'], 2);
+      expect(noticeChunk['text'], contains('forty-five calendar days'));
+      expect(
+        outcome,
+        isA<GroundedAnswer>()
+            .having((answer) => answer.citation.page, 'page', 2)
+            .having(
+              (answer) => answer.citation.heading,
+              'heading',
+              'NOTICE PERIOD',
+            ),
+      );
+
+      library = await openDocumentLibrary(
+        databasePath: databasePath,
+        embedder: const FakeEmbedder(),
+        llmBackend: const FakeLlmBackend(),
+        tokenCounter: const FakeTokenCounter(),
+        pdfTextExtractor: const _FixturePdfExtractor(),
+      );
+      await library
+          .importPdf(
+            title: 'Fictional Meridian Employment Agreement',
+            sourceName: 'fictional_text_contract.pdf',
+            bytes: fixtureBytes,
+          )
+          .drain<void>();
+      final reimportedDocuments = await library.listDocuments();
+      expect(reimportedDocuments, hasLength(2));
+      for (final importedDocument in reimportedDocuments) {
+        await library.deleteDocument(importedDocument.id);
+      }
+      await library.close();
+
+      final deleted = sqlite3.open(databasePath);
+      addTearDown(deleted.close);
+      expect(
+        deleted
+            .select('SELECT COUNT(*) AS count FROM documents;')
+            .single['count'],
+        0,
+      );
+      expect(
+        deleted.select('SELECT COUNT(*) AS count FROM chunks;').single['count'],
+        0,
+      );
+      expect(
+        deleted
+            .select('SELECT COUNT(*) AS count FROM vectors;')
+            .single['count'],
+        0,
+      );
+      expect(
+        deleted
+            .select('SELECT COUNT(*) AS count FROM chunks_fts;')
+            .single['count'],
+        0,
+      );
+    },
+  );
+
+  test('an empty PDF text layer requires OCR and persists nothing', () async {
+    final library = await openDocumentLibrary(
+      databasePath: ':memory:',
+      embedder: const FakeEmbedder(),
+      llmBackend: const FakeLlmBackend(),
+      tokenCounter: const FakeTokenCounter(),
+      pdfTextExtractor: const _EmptyPdfExtractor(),
+    );
+    addTearDown(library.close);
+
+    final progress = await library
+        .importPdf(
+          title: 'Fictional scanned PDF',
+          sourceName: 'scanned.pdf',
+          bytes: Uint8List.fromList(const [0x25, 0x50, 0x44, 0x46]),
+        )
+        .toList();
+
+    expect(progress.last.stage, ImportStage.failed);
+    expect(progress.last.message, contains('requires on-device OCR'));
+    expect(await library.listDocuments(), isEmpty);
+  });
+
+  test(
+    'a malformed or cancelled PDF leaves no queryable partial data',
+    () async {
+      for (final (extractor, cancellation, expectedStage) in [
+        (
+          const _FailingPdfExtractor(PdfExtractionFailureCode.malformed),
+          null,
+          ImportStage.failed,
+        ),
+        (
+          const _FailingPdfExtractor(PdfExtractionFailureCode.cancelled),
+          ImportCancellationController()..cancel(),
+          ImportStage.cancelled,
+        ),
+      ]) {
+        final library = await openDocumentLibrary(
+          databasePath: ':memory:',
+          embedder: const FakeEmbedder(),
+          llmBackend: const FakeLlmBackend(),
+          tokenCounter: const FakeTokenCounter(),
+          pdfTextExtractor: extractor,
+        );
+        final progress = await library
+            .importPdf(
+              title: 'Fictional PDF',
+              sourceName: 'fixture.pdf',
+              bytes: Uint8List.fromList(const [0x25, 0x50, 0x44, 0x46]),
+              cancellation: cancellation,
+            )
+            .toList();
+
+        expect(progress.last.stage, expectedStage);
+        expect(await library.listDocuments(), isEmpty);
+        await library.close();
+      }
     },
   );
 
@@ -1079,5 +1322,75 @@ final class _UnsupportedClaimBackend implements LlmBackend {
     required String prompt,
   }) async* {
     yield 'The manager’s car is blue.';
+  }
+}
+
+final class _FixturePdfExtractor implements PdfTextExtractor {
+  const _FixturePdfExtractor();
+
+  @override
+  Future<ExtractedPdf> extract({
+    required Uint8List bytes,
+    required String sourceName,
+    required bool Function() isCancelled,
+  }) async {
+    return const ExtractedPdf(
+      pages: [
+        ExtractedPdfPage(
+          pageNumber: 1,
+          text: 'FICTIONAL MERIDIAN EMPLOYMENT AGREEMENT',
+        ),
+        ExtractedPdfPage(
+          pageNumber: 2,
+          text: '''
+NOTICE PERIOD
+
+4.2 Either fictional party may end employment by providing forty-five calendar days of written notice.
+
+EFFECTIVE DATE
+
+5.1 This fictional agreement begins on the first Monday of the next lunar quarter.
+''',
+        ),
+        ExtractedPdfPage(
+          pageNumber: 3,
+          text: '''
+COMPENSATION DATE
+
+6.1 The fictional monthly salary is paid on the tenth business day of each month.
+''',
+        ),
+      ],
+    );
+  }
+}
+
+final class _EmptyPdfExtractor implements PdfTextExtractor {
+  const _EmptyPdfExtractor();
+
+  @override
+  Future<ExtractedPdf> extract({
+    required Uint8List bytes,
+    required String sourceName,
+    required bool Function() isCancelled,
+  }) async {
+    return const ExtractedPdf(
+      pages: [ExtractedPdfPage(pageNumber: 1, text: '')],
+    );
+  }
+}
+
+final class _FailingPdfExtractor implements PdfTextExtractor {
+  const _FailingPdfExtractor(this.code);
+
+  final PdfExtractionFailureCode code;
+
+  @override
+  Future<ExtractedPdf> extract({
+    required Uint8List bytes,
+    required String sourceName,
+    required bool Function() isCancelled,
+  }) {
+    throw PdfExtractionException(code, 'PRIVATE EXTRACTOR DETAIL');
   }
 }

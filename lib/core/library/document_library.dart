@@ -6,10 +6,21 @@ import 'package:sqlite3/sqlite3.dart';
 
 import '../platform/embedder.dart';
 import '../platform/llm_backend.dart';
+import '../platform/pdf_text_extractor.dart';
 import '../platform/token_counter.dart';
 import '../question/document_question_service.dart';
 
-enum ImportStage { extracting, chunking, embedding, indexing, complete, failed }
+enum ImportStage {
+  extracting,
+  chunking,
+  embedding,
+  indexing,
+  complete,
+  failed,
+  cancelled,
+}
+
+enum DocumentSourceType { pastedText, pdf }
 
 enum RetrievalMode { hybrid, denseOnly }
 
@@ -51,16 +62,28 @@ final class ImportProgress {
   final String? message;
 }
 
+final class ImportCancellationController {
+  bool _isCancelled = false;
+
+  bool get isCancelled => _isCancelled;
+
+  void cancel() => _isCancelled = true;
+}
+
 final class LibraryDocument {
   const LibraryDocument({
     required this.id,
     required this.title,
     required this.importedAt,
+    required this.sourceType,
+    required this.pageCount,
   });
 
   final String id;
   final String title;
   final DateTime importedAt;
+  final DocumentSourceType sourceType;
+  final int pageCount;
 }
 
 final class RetrievedEvidence {
@@ -90,6 +113,14 @@ abstract interface class DocumentLibrary {
   Stream<ImportProgress> importPastedText({
     required String title,
     required String text,
+    ImportCancellationController? cancellation,
+  });
+
+  Stream<ImportProgress> importPdf({
+    required String title,
+    required String sourceName,
+    required Uint8List bytes,
+    ImportCancellationController? cancellation,
   });
 
   Future<List<LibraryDocument>> listDocuments();
@@ -124,6 +155,7 @@ Future<DocumentLibrary> openDocumentLibrary({
   required Embedder embedder,
   required LlmBackend llmBackend,
   required TokenCounter tokenCounter,
+  PdfTextExtractor pdfTextExtractor = const UnavailablePdfTextExtractor(),
 }) async {
   final embeddingModelStatus = switch (embedder) {
     EmbeddingCapabilityProbe probe => await probe.embeddingModelStatus(),
@@ -138,6 +170,7 @@ Future<DocumentLibrary> openDocumentLibrary({
     embedder,
     llmBackend,
     tokenCounter,
+    pdfTextExtractor,
     embeddingModelStatus,
     llmAvailability,
   );
@@ -151,6 +184,7 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
     this._embedder,
     this._llmBackend,
     this._tokenCounter,
+    this._pdfTextExtractor,
     this.embeddingModelStatus,
     this._llmAvailability,
   );
@@ -161,6 +195,7 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
   final Embedder _embedder;
   final LlmBackend _llmBackend;
   final TokenCounter _tokenCounter;
+  final PdfTextExtractor _pdfTextExtractor;
   @override
   final EmbeddingModelStatus embeddingModelStatus;
   LlmAvailability _llmAvailability;
@@ -175,6 +210,8 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         source_type TEXT NOT NULL,
+        source_bytes BLOB,
+        page_count INTEGER NOT NULL DEFAULT 0,
         imported_at TEXT NOT NULL
       );
 
@@ -201,12 +238,25 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
         text
       );
     ''');
+    final documentColumns = {
+      for (final row in _database.select('PRAGMA table_info(documents);'))
+        row['name'] as String,
+    };
+    if (!documentColumns.contains('source_bytes')) {
+      _database.execute('ALTER TABLE documents ADD COLUMN source_bytes BLOB;');
+    }
+    if (!documentColumns.contains('page_count')) {
+      _database.execute(
+        'ALTER TABLE documents ADD COLUMN page_count INTEGER NOT NULL DEFAULT 0;',
+      );
+    }
   }
 
   @override
   Stream<ImportProgress> importPastedText({
     required String title,
     required String text,
+    ImportCancellationController? cancellation,
   }) async* {
     _ensureOpen();
     final cleanTitle = title.trim();
@@ -219,10 +269,102 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
       );
       return;
     }
+    if (cancellation?.isCancelled ?? false) {
+      yield const ImportProgress(
+        stage: ImportStage.cancelled,
+        message: 'Import cancelled. No document data was saved.',
+      );
+      return;
+    }
+    yield* _indexExtractedPages(
+      title: cleanTitle,
+      sourceType: DocumentSourceType.pastedText,
+      sourceBytes: null,
+      pages: [_SourcePage(text: cleanText, page: null)],
+      cancellation: cancellation,
+    );
+  }
+
+  @override
+  Stream<ImportProgress> importPdf({
+    required String title,
+    required String sourceName,
+    required Uint8List bytes,
+    ImportCancellationController? cancellation,
+  }) async* {
+    _ensureOpen();
+    final cleanTitle = title.trim();
+    final cleanSourceName = sourceName.trim();
+    yield const ImportProgress(stage: ImportStage.extracting);
+    if (cleanTitle.isEmpty || cleanSourceName.isEmpty || bytes.isEmpty) {
+      yield const ImportProgress(
+        stage: ImportStage.failed,
+        message: 'Choose a PDF and enter a document title.',
+      );
+      return;
+    }
 
     try {
+      final extracted = await _pdfTextExtractor.extract(
+        bytes: bytes,
+        sourceName: cleanSourceName,
+        isCancelled: () => cancellation?.isCancelled ?? false,
+      );
+      if (cancellation?.isCancelled ?? false) {
+        yield const ImportProgress(
+          stage: ImportStage.cancelled,
+          message: 'Import cancelled. No document data was saved.',
+        );
+        return;
+      }
+      final readablePages = [
+        for (final page in extracted.pages)
+          if (page.text.trim().isNotEmpty)
+            _SourcePage(text: page.text.trim(), page: page.pageNumber),
+      ];
+      if (readablePages.isEmpty) {
+        yield const ImportProgress(
+          stage: ImportStage.failed,
+          message: 'No text layer was found. This PDF requires on-device OCR.',
+        );
+        return;
+      }
+      yield* _indexExtractedPages(
+        title: cleanTitle,
+        sourceType: DocumentSourceType.pdf,
+        sourceBytes: bytes,
+        pages: readablePages,
+        pageCount: extracted.pages.length,
+        cancellation: cancellation,
+      );
+    } on PdfExtractionException catch (error) {
+      final cancelled = error.code == PdfExtractionFailureCode.cancelled;
+      yield ImportProgress(
+        stage: cancelled ? ImportStage.cancelled : ImportStage.failed,
+        message: cancelled
+            ? 'Import cancelled. No document data was saved.'
+            : _pdfImportMessage(error.code),
+      );
+    } on Object {
+      yield const ImportProgress(
+        stage: ImportStage.failed,
+        message:
+            'The PDF could not be imported. Choose another file and retry.',
+      );
+    }
+  }
+
+  Stream<ImportProgress> _indexExtractedPages({
+    required String title,
+    required DocumentSourceType sourceType,
+    required Uint8List? sourceBytes,
+    required List<_SourcePage> pages,
+    required ImportCancellationController? cancellation,
+    int pageCount = 0,
+  }) async* {
+    try {
       yield const ImportProgress(stage: ImportStage.chunking);
-      final chunks = await _chunkPastedText(cleanText, _tokenCounter);
+      final chunks = await _chunkSourcePages(pages, _tokenCounter);
       if (chunks.isEmpty) {
         yield const ImportProgress(
           stage: ImportStage.failed,
@@ -230,10 +372,24 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
         );
         return;
       }
+      if (cancellation?.isCancelled ?? false) {
+        yield const ImportProgress(
+          stage: ImportStage.cancelled,
+          message: 'Import cancelled. No document data was saved.',
+        );
+        return;
+      }
 
       yield const ImportProgress(stage: ImportStage.embedding);
       final preparedChunks = <_PreparedChunk>[];
       for (final chunk in chunks) {
+        if (cancellation?.isCancelled ?? false) {
+          yield const ImportProgress(
+            stage: ImportStage.cancelled,
+            message: 'Import cancelled. No document data was saved.',
+          );
+          return;
+        }
         final embeddedText = chunk.heading.isEmpty
             ? chunk.text
             : '${chunk.heading}\n${chunk.text}';
@@ -249,8 +405,21 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
         );
       }
 
+      if (cancellation?.isCancelled ?? false) {
+        yield const ImportProgress(
+          stage: ImportStage.cancelled,
+          message: 'Import cancelled. No document data was saved.',
+        );
+        return;
+      }
       yield const ImportProgress(stage: ImportStage.indexing);
-      final document = _persistDocument(cleanTitle, preparedChunks);
+      final document = _persistDocument(
+        title,
+        preparedChunks,
+        sourceType: sourceType,
+        sourceBytes: sourceBytes,
+        pageCount: pageCount,
+      );
       yield ImportProgress(stage: ImportStage.complete, document: document);
     } on EmbeddingException catch (error) {
       yield ImportProgress(
@@ -258,29 +427,44 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
         message: _embeddingImportMessage(error.code),
       );
     } on Object {
-      yield const ImportProgress(
+      yield ImportProgress(
         stage: ImportStage.failed,
-        message:
-            'The document could not be imported. Check the text and try again.',
+        message: sourceType == DocumentSourceType.pdf
+            ? 'The PDF could not be imported. Choose another file and retry.'
+            : 'The document could not be imported. Check the text and try again.',
       );
     }
   }
 
-  LibraryDocument _persistDocument(String title, List<_PreparedChunk> chunks) {
+  LibraryDocument _persistDocument(
+    String title,
+    List<_PreparedChunk> chunks, {
+    required DocumentSourceType sourceType,
+    required Uint8List? sourceBytes,
+    required int pageCount,
+  }) {
     final importedAt = DateTime.now().toUtc();
     final document = LibraryDocument(
       id: '${importedAt.microsecondsSinceEpoch.toRadixString(36)}-${_idSequence++}',
       title: title,
       importedAt: importedAt,
+      sourceType: sourceType,
+      pageCount: pageCount,
     );
     _database.execute('BEGIN IMMEDIATE;');
     try {
       _database.execute(
-        'INSERT INTO documents (id, title, source_type, imported_at) VALUES (?, ?, ?, ?);',
+        '''
+          INSERT INTO documents
+            (id, title, source_type, source_bytes, page_count, imported_at)
+          VALUES (?, ?, ?, ?, ?, ?);
+        ''',
         [
           document.id,
           document.title,
-          'pasted-text',
+          _sourceTypeValue(sourceType),
+          sourceBytes,
+          pageCount,
           importedAt.toIso8601String(),
         ],
       );
@@ -290,13 +474,14 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
           '''
             INSERT INTO chunks
               (document_id, ordinal, text, heading, page, token_count)
-            VALUES (?, ?, ?, ?, NULL, ?);
+            VALUES (?, ?, ?, ?, ?, ?);
           ''',
           [
             document.id,
             ordinal,
             prepared.chunk.text,
             prepared.chunk.heading,
+            prepared.chunk.page,
             prepared.tokenCount,
           ],
         );
@@ -325,7 +510,7 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
   Future<List<LibraryDocument>> listDocuments() async {
     _ensureOpen();
     final rows = _database.select('''
-      SELECT id, title, imported_at
+      SELECT id, title, source_type, page_count, imported_at
       FROM documents
       ORDER BY imported_at DESC, id DESC;
     ''');
@@ -335,6 +520,8 @@ final class _SqliteDocumentLibrary implements DocumentLibrary {
           id: row['id'] as String,
           title: row['title'] as String,
           importedAt: DateTime.parse(row['imported_at'] as String),
+          sourceType: _sourceTypeFromValue(row['source_type'] as String),
+          pageCount: row['page_count'] as int,
         ),
     ];
   }
@@ -767,11 +954,46 @@ String _embeddingRetrievalMessage(EmbeddingFailureCode code) => switch (code) {
     'On-device semantic search failed. Try again.',
 };
 
+String _pdfImportMessage(PdfExtractionFailureCode code) => switch (code) {
+  PdfExtractionFailureCode.passwordProtected =>
+    'This PDF is password protected. Remove the password and try again.',
+  PdfExtractionFailureCode.malformed =>
+    'This PDF is malformed or damaged. Choose another file.',
+  PdfExtractionFailureCode.unsupported =>
+    'This PDF format is not supported on this device.',
+  PdfExtractionFailureCode.cancelled =>
+    'Import cancelled. No document data was saved.',
+  PdfExtractionFailureCode.extractionFailed =>
+    'PDF text extraction failed. Choose another file and retry.',
+};
+
+String _sourceTypeValue(DocumentSourceType sourceType) => switch (sourceType) {
+  DocumentSourceType.pastedText => 'pasted-text',
+  DocumentSourceType.pdf => 'pdf',
+};
+
+DocumentSourceType _sourceTypeFromValue(String value) => switch (value) {
+  'pdf' => DocumentSourceType.pdf,
+  _ => DocumentSourceType.pastedText,
+};
+
+final class _SourcePage {
+  const _SourcePage({required this.text, required this.page});
+
+  final String text;
+  final int? page;
+}
+
 final class _TextChunk {
-  const _TextChunk({required this.text, required this.heading});
+  const _TextChunk({
+    required this.text,
+    required this.heading,
+    required this.page,
+  });
 
   final String text;
   final String heading;
+  final int? page;
 }
 
 final class _PreparedChunk {
@@ -811,64 +1033,75 @@ final class _QuantizedVector {
   final double scale;
 }
 
-Future<List<_TextChunk>> _chunkPastedText(
-  String text,
+Future<List<_TextChunk>> _chunkSourcePages(
+  List<_SourcePage> pages,
   TokenCounter tokenCounter,
 ) async {
   final targetTokens = productionRetrievalConfiguration.targetChunkTokens;
   final overlapTokens = productionRetrievalConfiguration.overlapTokens;
-  final sections = _parseSections(text);
   final chunks = <_TextChunk>[];
-  for (final section in sections) {
-    final sentences = <_SentenceUnit>[];
-    for (final paragraph in section.paragraphs) {
-      final paragraphSentences = paragraph
-          .split(RegExp(r'(?<=[.!?;])\s+'))
-          .where((sentence) => sentence.trim().isNotEmpty)
-          .toList();
-      for (var index = 0; index < paragraphSentences.length; index += 1) {
-        sentences.add(
-          _SentenceUnit(
-            text: paragraphSentences[index].trim(),
-            startsParagraph: index == 0,
+  for (final sourcePage in pages) {
+    final sections = _parseSections(sourcePage.text);
+    for (final section in sections) {
+      final sentences = <_SentenceUnit>[];
+      for (final paragraph in section.paragraphs) {
+        final paragraphSentences = paragraph
+            .split(RegExp(r'(?<=[.!?;])\s+'))
+            .where((sentence) => sentence.trim().isNotEmpty)
+            .toList();
+        for (var index = 0; index < paragraphSentences.length; index += 1) {
+          sentences.add(
+            _SentenceUnit(
+              text: paragraphSentences[index].trim(),
+              startsParagraph: index == 0,
+            ),
+          );
+        }
+      }
+      final current = <_SentenceUnit>[];
+      var currentTokens = 0;
+      for (final sentence in sentences) {
+        final sentenceTokens = await tokenCounter.countTokens(sentence.text);
+        if (current.isNotEmpty &&
+            currentTokens + sentenceTokens > targetTokens) {
+          chunks.add(
+            _TextChunk(
+              text: _joinSentences(current),
+              heading: section.heading,
+              page: sourcePage.page,
+            ),
+          );
+          final overlap = <_SentenceUnit>[];
+          var overlapCount = 0;
+          for (final prior in current.reversed) {
+            final priorTokens = await tokenCounter.countTokens(prior.text);
+            if (overlapCount + priorTokens > overlapTokens) {
+              if (overlap.isEmpty) {
+                overlap.insert(0, prior);
+                overlapCount += priorTokens;
+              }
+              break;
+            }
+            overlap.insert(0, prior);
+            overlapCount += priorTokens;
+          }
+          current
+            ..clear()
+            ..addAll(overlap);
+          currentTokens = overlapCount;
+        }
+        current.add(sentence);
+        currentTokens += sentenceTokens;
+      }
+      if (current.isNotEmpty) {
+        chunks.add(
+          _TextChunk(
+            text: _joinSentences(current),
+            heading: section.heading,
+            page: sourcePage.page,
           ),
         );
       }
-    }
-    final current = <_SentenceUnit>[];
-    var currentTokens = 0;
-    for (final sentence in sentences) {
-      final sentenceTokens = await tokenCounter.countTokens(sentence.text);
-      if (current.isNotEmpty && currentTokens + sentenceTokens > targetTokens) {
-        chunks.add(
-          _TextChunk(text: _joinSentences(current), heading: section.heading),
-        );
-        final overlap = <_SentenceUnit>[];
-        var overlapCount = 0;
-        for (final prior in current.reversed) {
-          final priorTokens = await tokenCounter.countTokens(prior.text);
-          if (overlapCount + priorTokens > overlapTokens) {
-            if (overlap.isEmpty) {
-              overlap.insert(0, prior);
-              overlapCount += priorTokens;
-            }
-            break;
-          }
-          overlap.insert(0, prior);
-          overlapCount += priorTokens;
-        }
-        current
-          ..clear()
-          ..addAll(overlap);
-        currentTokens = overlapCount;
-      }
-      current.add(sentence);
-      currentTokens += sentenceTokens;
-    }
-    if (current.isNotEmpty) {
-      chunks.add(
-        _TextChunk(text: _joinSentences(current), heading: section.heading),
-      );
     }
   }
   return chunks;

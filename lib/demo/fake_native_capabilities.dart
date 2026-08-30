@@ -92,6 +92,17 @@ final class FakeLlmBackend implements LlmBackend {
       yield 'An employee must report an incident within 14 calendar days.';
       return;
     }
+    final equipmentReturnIndex = evidence.indexWhere(
+      (passage) => passage.contains('within seven calendar days'),
+    );
+    if (equipmentReturnIndex >= 0 &&
+        normalizedQuestion.contains('equipment') &&
+        (normalizedQuestion.contains('when') ||
+            normalizedQuestion.contains('how soon') ||
+            normalizedQuestion.contains('deadline'))) {
+      yield 'The fictional employee must return the equipment within seven calendar days after the final workday.';
+      return;
+    }
     yield insufficientEvidenceMessage;
   }
 }
@@ -100,8 +111,14 @@ final class FakeOcrEngine implements OcrEngine {
   const FakeOcrEngine();
 
   @override
-  Future<String> recognizeText(List<int> imageBytes) async {
-    return 'Fictional recognized document text.';
+  Future<OcrRecognition> recognize({
+    required OcrImageInput image,
+    required bool Function() isCancelled,
+  }) async {
+    return const OcrRecognition(
+      text: 'Fictional recognized document text.',
+      confidence: 0.99,
+    );
   }
 }
 

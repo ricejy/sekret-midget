@@ -90,6 +90,69 @@ final class RunnerTests: XCTestCase {
     }
   }
 
+  func testVisionOcrOrdersLinesAndReportsMeanConfidence() async throws {
+    let service = AppleVisionOcrService(
+      runtime: FakeVisionTextRecognitionRuntime(
+        lines: [
+          VisionRecognizedLine(
+            text: "Seven calendar days.",
+            confidence: 0.8,
+            boundingBox: CGRect(x: 0.1, y: 0.4, width: 0.7, height: 0.1)
+          ),
+          VisionRecognizedLine(
+            text: "RETURN DEADLINE",
+            confidence: 1.0,
+            boundingBox: CGRect(x: 0.1, y: 0.8, width: 0.5, height: 0.1)
+          ),
+        ]
+      )
+    )
+
+    let payload = try await service.recognize(.encoded(Data([1, 2, 3])))
+
+    XCTAssertEqual(
+      payload["text"] as? String,
+      "RETURN DEADLINE\nSeven calendar days."
+    )
+    let confidence = try XCTUnwrap(payload["confidence"] as? Double)
+    XCTAssertEqual(confidence, 0.9, accuracy: 0.0001)
+  }
+
+  func testVisionOcrFailureCodeDoesNotExposeNativeDetails() async {
+    let service = AppleVisionOcrService(
+      runtime: FakeVisionTextRecognitionRuntime(
+        failure: .recognitionFailed
+      )
+    )
+
+    do {
+      _ = try await service.recognize(.encoded(Data([1])))
+      XCTFail("Expected OCR to fail.")
+    } catch {
+      XCTAssertEqual(
+        (error as? AppleVisionOcrError)?.rawValue,
+        "recognition_failed"
+      )
+    }
+  }
+
+  func testSystemVisionOcrExercisesCleanRotatedAndLowQualityFixtures() async throws {
+    let runtime = SystemVisionTextRecognitionRuntime()
+    let clean = try fixtureImage(named: "fictional_document_clean")
+    let rotated = try fixtureImage(named: "fictional_document_rotated")
+    let lowQuality = try fixtureImage(named: "fictional_document_low_quality")
+
+    let cleanLines = try await runtime.recognize(.encoded(clean))
+    let rotatedLines = try await runtime.recognize(.encoded(rotated))
+    let lowQualityLines = try await runtime.recognize(.encoded(lowQuality))
+    let cleanText = cleanLines.map(\.text).joined(separator: " ").lowercased()
+    let rotatedText = rotatedLines.map(\.text).joined(separator: " ").lowercased()
+
+    XCTAssertTrue(cleanText.contains("seven calendar days"))
+    XCTAssertTrue(rotatedText.contains("seven calendar days"))
+    XCTAssertLessThanOrEqual(lowQualityLines.count, cleanLines.count)
+  }
+
   @available(iOS 14.0, *)
   func testAppleEmbeddingFindsTheFictionalSemanticMatch() throws {
     guard let model = NLEmbedding.sentenceEmbedding(for: .english) else {
@@ -253,6 +316,14 @@ final class RunnerTests: XCTestCase {
   }
 }
 
+private func fixtureImage(named name: String) throws -> Data {
+  let bundle = Bundle(for: RunnerTests.self)
+  guard let url = bundle.url(forResource: name, withExtension: "png") else {
+    throw XCTSkip("Missing fictional Vision OCR fixture: \(name).png")
+  }
+  return try Data(contentsOf: url)
+}
+
 private final class FakeFoundationModelRuntime: FoundationModelRuntime {
   init(
     status: FoundationModelAvailabilityStatus,
@@ -315,6 +386,24 @@ private final class FakeSentenceEmbeddingModel: SentenceEmbeddingModel {
 
   func vector(for string: String) -> [Double]? {
     vector
+  }
+}
+
+private final class FakeVisionTextRecognitionRuntime: VisionTextRecognitionRuntime {
+  init(
+    lines: [VisionRecognizedLine] = [],
+    failure: AppleVisionOcrError? = nil
+  ) {
+    self.lines = lines
+    self.failure = failure
+  }
+
+  let lines: [VisionRecognizedLine]
+  let failure: AppleVisionOcrError?
+
+  func recognize(_ image: VisionOcrImage) async throws -> [VisionRecognizedLine] {
+    if let failure { throw failure }
+    return lines
   }
 }
 

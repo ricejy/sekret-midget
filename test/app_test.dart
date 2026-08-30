@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sekret_midget/app.dart';
 import 'package:sekret_midget/core/library/document_library.dart';
+import 'package:sekret_midget/core/platform/document_image_picker.dart';
 import 'package:sekret_midget/core/platform/embedder.dart';
 import 'package:sekret_midget/core/platform/llm_backend.dart';
+import 'package:sekret_midget/core/platform/ocr_engine.dart';
 import 'package:sekret_midget/core/platform/pdf_file_picker.dart';
 import 'package:sekret_midget/core/platform/pdf_text_extractor.dart';
 import 'package:sekret_midget/demo/fake_native_capabilities.dart';
@@ -127,6 +129,91 @@ void main() {
     },
   );
 
+  testWidgets(
+    'user selects a document photo and receives an OCR-grounded answer',
+    (tester) async {
+      _useWideTestSurface(tester);
+      final fixtureBytes = File(
+        'test/fixtures/fictional_document_photo.png',
+      ).readAsBytesSync();
+      final library = await _openTestLibrary(
+        ocrEngine: const _FixturePhotoOcrEngine(),
+      );
+      addTearDown(library.close);
+
+      await tester.pumpWidget(
+        SekretMidgetApp(
+          documentLibrary: library,
+          documentImagePicker: _FixtureImagePicker(fixtureBytes),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('open-import')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('choose-photo')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('fictional_document_photo.png'), findsOneWidget);
+      expect(find.byKey(const Key('import-text')), findsNothing);
+      await tester.tap(find.widgetWithText(FilledButton, 'Import photo'));
+      await tester.pumpAndSettle();
+
+      expect(_stageStatus('OCR complete'), findsOneWidget);
+      expect(_stageStatus('Chunked complete'), findsOneWidget);
+      expect(_stageStatus('Embedded complete'), findsOneWidget);
+      expect(_stageStatus('Indexed complete'), findsOneWidget);
+
+      await tester.tap(
+        find.widgetWithText(InkWell, 'fictional_document_photo'),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('question-field')),
+        'When must the fictional employee return equipment?',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Ask document'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'The fictional employee must return the equipment within seven calendar days after the final workday.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('RETURN DEADLINE · Page 1'), findsOneWidget);
+    },
+  );
+
+  testWidgets('low-confidence photo warning remains visible after import', (
+    tester,
+  ) async {
+    _useWideTestSurface(tester);
+    final fixtureBytes = File(
+      'test/fixtures/fictional_document_photo.png',
+    ).readAsBytesSync();
+    final library = await _openTestLibrary(
+      ocrEngine: const _FixturePhotoOcrEngine(confidence: 0.3),
+    );
+    addTearDown(library.close);
+
+    await tester.pumpWidget(
+      SekretMidgetApp(
+        documentLibrary: library,
+        documentImagePicker: _FixtureImagePicker(fixtureBytes),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('open-import')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('choose-photo')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Import photo'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('OCR confidence was low'), findsOneWidget);
+    expect(find.textContaining('Verify the cited source'), findsOneWidget);
+  });
+
   testWidgets('cancelling PDF extraction leaves no document in the library', (
     tester,
   ) async {
@@ -180,7 +267,7 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.byKey(const Key('import-title')), findsOneWidget);
-    expect(find.byKey(const Key('import-text')), findsOneWidget);
+    expect(find.byKey(const Key('choose-photo')), findsOneWidget);
   });
 
   testWidgets('an answer is discarded when another document is selected', (
@@ -437,6 +524,7 @@ void main() {
 
 Future<DocumentLibrary> _openTestLibrary({
   PdfTextExtractor pdfTextExtractor = const UnavailablePdfTextExtractor(),
+  OcrEngine ocrEngine = const UnavailableOcrEngine(),
 }) {
   return openDocumentLibrary(
     databasePath: ':memory:',
@@ -444,6 +532,7 @@ Future<DocumentLibrary> _openTestLibrary({
     llmBackend: const FakeLlmBackend(),
     tokenCounter: const FakeTokenCounter(),
     pdfTextExtractor: pdfTextExtractor,
+    ocrEngine: ocrEngine,
   );
 }
 
@@ -512,6 +601,45 @@ final class _FixturePdfPicker implements PdfFilePicker {
   @override
   Future<SelectedPdfFile?> pickPdf() async {
     return SelectedPdfFile(name: 'fictional_text_contract.pdf', bytes: bytes);
+  }
+}
+
+final class _FixtureImagePicker implements DocumentImagePicker {
+  const _FixtureImagePicker(this.bytes);
+
+  final Uint8List bytes;
+
+  @override
+  Future<SelectedDocumentImage?> pickImage() async {
+    return SelectedDocumentImage(
+      name: 'fictional_document_photo.png',
+      bytes: bytes,
+    );
+  }
+}
+
+final class _FixturePhotoOcrEngine implements OcrEngine {
+  const _FixturePhotoOcrEngine({this.confidence = 0.96});
+
+  final double confidence;
+
+  @override
+  Future<OcrRecognition> recognize({
+    required OcrImageInput image,
+    required bool Function() isCancelled,
+  }) async {
+    return OcrRecognition(
+      text: '''
+RETURN DEADLINE
+
+The fictional employee must return all issued equipment within seven calendar days after the final workday.
+
+RETURN LOCATION
+
+Equipment must be delivered to the fictional Aster Workshop service desk at 18 Lantern Avenue.
+''',
+      confidence: confidence,
+    );
   }
 }
 

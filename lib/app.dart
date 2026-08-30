@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'core/library/document_library.dart';
+import 'core/platform/document_image_picker.dart';
 import 'core/platform/embedder.dart';
+import 'core/platform/file_selector_document_image_picker.dart';
 import 'core/platform/file_selector_pdf_picker.dart';
 import 'core/platform/llm_backend.dart';
 import 'core/platform/pdf_file_picker.dart';
@@ -26,6 +28,7 @@ final class SekretMidgetApp extends StatefulWidget {
     this.documentLibraryFuture,
     this.modelAvailability,
     this.pdfFilePicker = const FileSelectorPdfPicker(),
+    this.documentImagePicker = const FileSelectorDocumentImagePicker(),
   }) : assert(
          documentLibrary == null || documentLibraryFuture == null,
          'Provide either documentLibrary or documentLibraryFuture, not both.',
@@ -35,6 +38,7 @@ final class SekretMidgetApp extends StatefulWidget {
   final Future<DocumentLibrary>? documentLibraryFuture;
   final LlmAvailability? modelAvailability;
   final PdfFilePicker pdfFilePicker;
+  final DocumentImagePicker documentImagePicker;
 
   @override
   State<SekretMidgetApp> createState() => _SekretMidgetAppState();
@@ -96,6 +100,7 @@ final class _SekretMidgetAppState extends State<SekretMidgetApp> {
               documentLibrary: library,
               initialModelAvailability: widget.modelAvailability,
               pdfFilePicker: widget.pdfFilePicker,
+              documentImagePicker: widget.documentImagePicker,
             );
           }
           return const Scaffold(
@@ -156,11 +161,13 @@ final class _DocumentDesk extends StatefulWidget {
     required this.documentLibrary,
     required this.initialModelAvailability,
     required this.pdfFilePicker,
+    required this.documentImagePicker,
   });
 
   final DocumentLibrary documentLibrary;
   final LlmAvailability? initialModelAvailability;
   final PdfFilePicker pdfFilePicker;
+  final DocumentImagePicker documentImagePicker;
 
   @override
   State<_DocumentDesk> createState() => _DocumentDeskState();
@@ -177,6 +184,7 @@ final class _DocumentDeskState extends State<_DocumentDesk>
   ImportStage? _currentImportStage;
   List<ImportStage> _completedImportStages = const [];
   String? _importMessage;
+  bool _showOcrProgress = false;
   bool _showImport = false;
   bool _isImporting = false;
   bool _isAsking = false;
@@ -184,6 +192,7 @@ final class _DocumentDeskState extends State<_DocumentDesk>
   int _answerRequestId = 0;
   String? _streamedAnswer;
   SelectedPdfFile? _selectedPdf;
+  SelectedDocumentImage? _selectedImage;
   ImportCancellationController? _importCancellation;
   late LlmAvailability _modelAvailability;
 
@@ -247,7 +256,9 @@ final class _DocumentDeskState extends State<_DocumentDesk>
       _importMessage = null;
       _completedImportStages = const [];
       _currentImportStage = null;
+      _showOcrProgress = false;
       _selectedPdf = null;
+      _selectedImage = null;
     });
   }
 
@@ -266,11 +277,13 @@ final class _DocumentDeskState extends State<_DocumentDesk>
       );
       setState(() {
         _selectedPdf = selected;
+        _selectedImage = null;
         _importTitleController.text = inferredTitle;
         _importTextController.clear();
         _importMessage = null;
         _completedImportStages = const [];
         _currentImportStage = null;
+        _showOcrProgress = false;
       });
     } on Object {
       if (!mounted) {
@@ -283,15 +296,49 @@ final class _DocumentDeskState extends State<_DocumentDesk>
     }
   }
 
+  Future<void> _pickImage() async {
+    if (_isImporting) {
+      return;
+    }
+    try {
+      final selected = await widget.documentImagePicker.pickImage();
+      if (!mounted || selected == null) {
+        return;
+      }
+      final inferredTitle = selected.name.replaceFirst(RegExp(r'\.[^.]+$'), '');
+      setState(() {
+        _selectedImage = selected;
+        _selectedPdf = null;
+        _importTitleController.text = inferredTitle;
+        _importTextController.clear();
+        _importMessage = null;
+        _completedImportStages = const [];
+        _currentImportStage = null;
+        _showOcrProgress = false;
+      });
+    } on Object {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _importMessage =
+            'The photo picker could not open this image. Try again.';
+        _currentImportStage = ImportStage.failed;
+      });
+    }
+  }
+
   void _usePastedText() {
     if (_isImporting) {
       return;
     }
     setState(() {
       _selectedPdf = null;
+      _selectedImage = null;
       _importMessage = null;
       _completedImportStages = const [];
       _currentImportStage = null;
+      _showOcrProgress = false;
     });
   }
 
@@ -301,25 +348,34 @@ final class _DocumentDeskState extends State<_DocumentDesk>
     if (_isImporting) {
       return;
     }
+    final selectedPdf = _selectedPdf;
+    final selectedImage = _selectedImage;
     setState(() {
       _isImporting = true;
       _importMessage = null;
       _completedImportStages = const [];
+      _showOcrProgress = selectedImage != null;
     });
     final cancellation = ImportCancellationController();
     _importCancellation = cancellation;
     final completed = <ImportStage>[];
-    final selectedPdf = _selectedPdf;
-    final progressStream = selectedPdf == null
-        ? widget.documentLibrary.importPastedText(
-            title: _importTitleController.text,
-            text: _importTextController.text,
-            cancellation: cancellation,
-          )
-        : widget.documentLibrary.importPdf(
+    final progressStream = selectedPdf != null
+        ? widget.documentLibrary.importPdf(
             title: _importTitleController.text,
             sourceName: selectedPdf.name,
             bytes: selectedPdf.bytes,
+            cancellation: cancellation,
+          )
+        : selectedImage != null
+        ? widget.documentLibrary.importPhoto(
+            title: _importTitleController.text,
+            sourceName: selectedImage.name,
+            bytes: selectedImage.bytes,
+            cancellation: cancellation,
+          )
+        : widget.documentLibrary.importPastedText(
+            title: _importTitleController.text,
+            text: _importTextController.text,
             cancellation: cancellation,
           );
     await for (final progress in progressStream) {
@@ -327,7 +383,13 @@ final class _DocumentDeskState extends State<_DocumentDesk>
         return;
       }
       final completedStage = switch (progress.stage) {
-        ImportStage.chunking => ImportStage.extracting,
+        ImportStage.ocr => selectedPdf == null ? null : ImportStage.extracting,
+        ImportStage.chunking =>
+          completed.contains(ImportStage.ocr)
+              ? null
+              : selectedImage != null
+              ? ImportStage.ocr
+              : ImportStage.extracting,
         ImportStage.embedding => ImportStage.chunking,
         ImportStage.indexing => ImportStage.embedding,
         ImportStage.complete => ImportStage.indexing,
@@ -335,6 +397,13 @@ final class _DocumentDeskState extends State<_DocumentDesk>
         ImportStage.failed ||
         ImportStage.cancelled => null,
       };
+      if (progress.stage == ImportStage.chunking &&
+          (selectedImage != null ||
+              completed.contains(ImportStage.extracting)) &&
+          !completed.contains(ImportStage.ocr) &&
+          (_currentImportStage == ImportStage.ocr || selectedImage != null)) {
+        completed.add(ImportStage.ocr);
+      }
       if (completedStage != null && !completed.contains(completedStage)) {
         completed.add(completedStage);
       }
@@ -342,6 +411,8 @@ final class _DocumentDeskState extends State<_DocumentDesk>
         _currentImportStage = progress.stage;
         _completedImportStages = List.unmodifiable(completed);
         _importMessage = progress.message;
+        _showOcrProgress =
+            _showOcrProgress || progress.stage == ImportStage.ocr;
       });
       if (progress.stage == ImportStage.complete) {
         await _loadDocuments();
@@ -350,6 +421,7 @@ final class _DocumentDeskState extends State<_DocumentDesk>
         }
         setState(() {
           _importMessage =
+              progress.message ??
               'Import complete. Select the document from your library.';
         });
       }
@@ -520,7 +592,10 @@ final class _DocumentDeskState extends State<_DocumentDesk>
         message: _importMessage,
         isImporting: _isImporting,
         selectedPdfName: _selectedPdf?.name,
+        selectedImageName: _selectedImage?.name,
+        showOcrProgress: _showOcrProgress,
         onChoosePdf: _pickPdf,
+        onChooseImage: _pickImage,
         onUsePastedText: _usePastedText,
         onCancel: _cancelImport,
         onImport: _importDocument,
@@ -824,7 +899,10 @@ final class _ImportWorkspace extends StatelessWidget {
     required this.message,
     required this.isImporting,
     required this.selectedPdfName,
+    required this.selectedImageName,
+    required this.showOcrProgress,
     required this.onChoosePdf,
+    required this.onChooseImage,
     required this.onUsePastedText,
     required this.onCancel,
     required this.onImport,
@@ -837,7 +915,10 @@ final class _ImportWorkspace extends StatelessWidget {
   final String? message;
   final bool isImporting;
   final String? selectedPdfName;
+  final String? selectedImageName;
+  final bool showOcrProgress;
   final VoidCallback onChoosePdf;
+  final VoidCallback onChooseImage;
   final VoidCallback onUsePastedText;
   final VoidCallback onCancel;
   final VoidCallback onImport;
@@ -855,19 +936,31 @@ final class _ImportWorkspace extends StatelessWidget {
           ),
           const SizedBox(height: 7),
           Text(
-            'Choose a text-layer PDF or paste text. Extraction, search, and answers stay in this local library.',
+            'Choose a PDF, select a document photo, or paste text. OCR, search, and answers stay on this device.',
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(color: _slate, height: 1.45),
           ),
           const SizedBox(height: 24),
-          OutlinedButton.icon(
-            key: const Key('choose-pdf'),
-            onPressed: isImporting ? null : onChoosePdf,
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            label: const Text('Choose PDF'),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              OutlinedButton.icon(
+                key: const Key('choose-pdf'),
+                onPressed: isImporting ? null : onChoosePdf,
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                label: const Text('Choose PDF'),
+              ),
+              OutlinedButton.icon(
+                key: const Key('choose-photo'),
+                onPressed: isImporting ? null : onChooseImage,
+                icon: const Icon(Icons.photo_camera_outlined),
+                label: const Text('Choose photo'),
+              ),
+            ],
           ),
-          if (selectedPdfName case final name?) ...[
+          if ((selectedPdfName ?? selectedImageName) case final name?) ...[
             const SizedBox(height: 10),
             Row(
               children: [
@@ -876,7 +969,7 @@ final class _ImportWorkspace extends StatelessWidget {
                 Expanded(
                   child: Text(
                     name,
-                    key: const Key('selected-pdf-name'),
+                    key: const Key('selected-source-name'),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -895,7 +988,7 @@ final class _ImportWorkspace extends StatelessWidget {
             decoration: const InputDecoration(labelText: 'Document title'),
           ),
           const SizedBox(height: 14),
-          if (selectedPdfName == null)
+          if (selectedPdfName == null && selectedImageName == null)
             TextField(
               key: const Key('import-text'),
               controller: textController,
@@ -915,8 +1008,10 @@ final class _ImportWorkspace extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFC9D9F5)),
               ),
-              child: const Text(
-                'The PDF text layer will be extracted page by page before indexing.',
+              child: Text(
+                selectedPdfName != null
+                    ? 'Each PDF page will use its text layer when available and fall back to on-device OCR when needed.'
+                    : 'The document photo will be recognized with on-device OCR before indexing.',
               ),
             ),
           const SizedBox(height: 16),
@@ -942,9 +1037,11 @@ final class _ImportWorkspace extends StatelessWidget {
                   label: Text(
                     isImporting
                         ? 'Importing locally'
-                        : selectedPdfName == null
-                        ? 'Import document'
-                        : 'Import PDF',
+                        : selectedPdfName != null
+                        ? 'Import PDF'
+                        : selectedImageName != null
+                        ? 'Import photo'
+                        : 'Import document',
                   ),
                 ),
               ],
@@ -956,6 +1053,8 @@ final class _ImportWorkspace extends StatelessWidget {
               completedStages: completedStages,
               currentStage: currentStage,
               message: message,
+              showOcrStage: showOcrProgress,
+              showExtractionStage: selectedImageName == null,
             ),
           ],
         ],
@@ -969,16 +1068,21 @@ final class _ImportLedger extends StatelessWidget {
     required this.completedStages,
     required this.currentStage,
     required this.message,
+    required this.showOcrStage,
+    required this.showExtractionStage,
   });
 
   final List<ImportStage> completedStages;
   final ImportStage? currentStage;
   final String? message;
+  final bool showOcrStage;
+  final bool showExtractionStage;
 
   @override
   Widget build(BuildContext context) {
-    const stages = [
-      (ImportStage.extracting, 'Extracted'),
+    final stages = [
+      if (showExtractionStage) (ImportStage.extracting, 'Extracted'),
+      if (showOcrStage) (ImportStage.ocr, 'OCR'),
       (ImportStage.chunking, 'Chunked'),
       (ImportStage.embedding, 'Embedded'),
       (ImportStage.indexing, 'Indexed'),

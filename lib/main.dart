@@ -7,7 +7,10 @@ import 'app.dart';
 import 'core/library/document_library.dart';
 import 'core/platform/apple_embedder.dart';
 import 'core/platform/apple_foundation_models.dart';
+import 'core/platform/apple_vision_ocr.dart';
 import 'core/platform/embedder.dart';
+import 'core/platform/ocr_engine.dart';
+import 'core/platform/pdfrx_pdf_page_rasterizer.dart';
 import 'core/platform/pdfrx_pdf_text_extractor.dart';
 import 'demo/fake_native_capabilities.dart';
 import 'evaluation/foundation_models_evaluation_app.dart';
@@ -63,6 +66,8 @@ Future<DocumentLibrary> _openProtectedLibrary({
     llmBackend: foundationModels ?? const FakeLlmBackend(),
     tokenCounter: foundationModels ?? const FakeTokenCounter(),
     pdfTextExtractor: const PdfrxPdfTextExtractor(),
+    pdfPageRasterizer: const PdfrxPdfPageRasterizer(),
+    ocrEngine: Platform.isIOS ? AppleVisionOcr() : const UnavailableOcrEngine(),
   );
   try {
     await foundationModels?.protectStorage(

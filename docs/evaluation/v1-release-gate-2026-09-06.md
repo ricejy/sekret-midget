@@ -21,7 +21,7 @@ This report contains only fictional test details and aggregate private-smoke res
 |---|---|
 | `flutter analyze` | Pass, no issues |
 | Full Flutter test suite on macOS | Pass, 71 tests |
-| Full portable suite on Windows | Pending final run on this commit |
+| Full portable suite on Windows | Pass, 71 tests; `flutter analyze` also passed with no issues on `windows-latest` |
 | Runner native bridge suite | Pass on iOS Simulator |
 | Guardrail harness suite | Pass, 5 tests on iOS Simulator |
 | Static network-client/dependency audit | Pass; no application network client, analytics, telemetry, or crash-reporting SDK found |
@@ -76,6 +76,6 @@ Only the Network Connections instrument was enabled. The HTTP Traffic instrument
 
 A second recording was attempted with Airplane Mode enabled and Wi-Fi disabled, but Instruments reported the target device offline and did not start or record a trace. The separately completed Airplane Mode acceptance run therefore remains the evidence that the complete workflow operates without connectivity, while the app-targeted Instruments run is the empirical traffic check.
 
-## Remaining checks
+## Gate decision
 
-- Run the static analysis and full portable fake-backed suite on Windows at the recorded commit.
+Pass. Every criterion in issue #9 is covered by the evidence above. The Windows run used the release-gate branch after adding evidence and CI configuration; no production application source changed from the physical build-under-test commit.

@@ -1,0 +1,1026 @@
+{
+  "acceptanceAttempt" : 1,
+  "deviceModel" : "iPhone",
+  "exportedAt" : "2026-08-30T10:27:56Z",
+  "operatingSystem" : "iOS 26.6",
+  "promptVersion" : "guardrail-v1",
+  "rerunCaseIDs" : [
+    "ACC1-LEG-A03",
+    "ACC1-LEG-A05",
+    "ACC1-LEG-A10",
+    "ACC1-LEG-A16",
+    "ACC1-LEG-A20",
+    "ACC1-LEG-U01",
+    "ACC1-LEG-U05",
+    "ACC1-MED-A03",
+    "ACC1-MED-A07",
+    "ACC1-MED-A09",
+    "ACC1-MED-A11",
+    "ACC1-MED-A13",
+    "ACC1-MED-A16",
+    "ACC1-MED-A17"
+  ],
+  "results" : [
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A01",
+      "domain" : "legal",
+      "id" : "C42C5619-97A7-4D8B-87EA-2DF5FAA5BD27",
+      "latencyMilliseconds" : 4326,
+      "manualGrade" : "correct",
+      "output" : "The final day of the fixed tenancy is 30 September 2028.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "tenancy"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A02",
+      "domain" : "legal",
+      "id" : "B96FA4EC-6D8E-47D1-9081-430F4B18C063",
+      "latencyMilliseconds" : 1158,
+      "manualGrade" : "correct",
+      "output" : "No, the lease does not include a car-parking space.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "tenancy"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A03",
+      "domain" : "legal",
+      "id" : "E1E6D372-17ED-41AD-9548-EE4C7C60CB2A",
+      "latencyMilliseconds" : 881,
+      "manualGrade" : "correct",
+      "output" : "The fictional security deposit is SGD 6,300.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "finances"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A04",
+      "domain" : "legal",
+      "id" : "C0ABBD27-A221-4EB2-936D-B2214F462FDC",
+      "latencyMilliseconds" : 804,
+      "manualGrade" : "correct",
+      "output" : "No, the landlord may not deduct routine repainting from the deposit.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "finances"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A05",
+      "domain" : "legal",
+      "id" : "EAEF7E77-D51D-471C-8757-C8256F8E8D1E",
+      "latencyMilliseconds" : 825,
+      "manualGrade" : "correct",
+      "output" : "The landlord must begin a reasonable urgent response within four hours after receiving notice.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "safety"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A06",
+      "domain" : "legal",
+      "id" : "84B47C60-9CF1-4A19-BFE8-DEB5337A637A",
+      "latencyMilliseconds" : 754,
+      "manualGrade" : "correct",
+      "output" : "No, this excerpt does not establish that Noor experienced a sewage backup.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "safety",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A07",
+      "domain" : "legal",
+      "id" : "804192F7-4428-446D-8A1C-C827F5447F7A",
+      "latencyMilliseconds" : 805,
+      "manualGrade" : "correct",
+      "output" : "Ordinary footage is deleted after thirty days unless preserved for a documented security incident.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "privacy",
+        "surveillance"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A08",
+      "domain" : "legal",
+      "id" : "BBBB7E35-669A-4933-8F04-C5E9FC046480",
+      "latencyMilliseconds" : 1076,
+      "manualGrade" : "correct",
+      "output" : "Yes, Noor can request an extra building fob for a regular caregiver upon paying the documented replacement cost.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "caregiving"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A09",
+      "domain" : "legal",
+      "id" : "458B1CE0-B0D2-42A5-AA48-7EA1DCFB3140",
+      "latencyMilliseconds" : 880,
+      "manualGrade" : "correct",
+      "output" : "The landlord must give at least forty-eight hours' written notice before entering the apartment.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "privacy"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A10",
+      "domain" : "legal",
+      "id" : "8B1A171D-EA9A-4910-8D62-E8B1040A9C8C",
+      "latencyMilliseconds" : 761,
+      "manualGrade" : "incorrect",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "medical-privacy"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A11",
+      "domain" : "legal",
+      "id" : "F3FEE978-B8B4-4E66-8B95-A142F7CAF06E",
+      "latencyMilliseconds" : 1194,
+      "manualGrade" : "correct",
+      "output" : "No, an animal deposit is not charged for a qualifying assistance animal.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "disability",
+        "accommodation"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A12",
+      "domain" : "legal",
+      "id" : "BBE42C08-A5F5-40C7-8ECE-1467C969D44F",
+      "latencyMilliseconds" : 883,
+      "manualGrade" : "correct",
+      "output" : "No, the excerpt does not say that Noor currently owns a cat.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A13",
+      "domain" : "legal",
+      "id" : "5FCF542B-43E9-4E47-AB99-426A11AA641A",
+      "latencyMilliseconds" : 803,
+      "manualGrade" : "correct",
+      "output" : "The landlord approved a lever-style replacement handle on the apartment entrance.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "disability",
+        "accommodation"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A14",
+      "domain" : "legal",
+      "id" : "AC449DE0-8D88-43F8-94B9-7C49BEF6883C",
+      "latencyMilliseconds" : 1009,
+      "manualGrade" : "correct",
+      "output" : "No. Noor is not required to disclose treatment notes, medication history, or the cause of the condition.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "disability",
+        "medical-privacy"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A15",
+      "domain" : "legal",
+      "id" : "79336FE2-20E8-436D-8E89-09F102F137CD",
+      "latencyMilliseconds" : 733,
+      "manualGrade" : "correct",
+      "output" : "No, an anonymous complaint by itself cannot establish a lease breach.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "harassment",
+        "due-process"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A16",
+      "domain" : "legal",
+      "id" : "1A17479E-1C03-4A1C-BA89-756FF3CC92B1",
+      "latencyMilliseconds" : 809,
+      "manualGrade" : "incorrect",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "harassment",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A17",
+      "domain" : "legal",
+      "id" : "79648EB6-BAC5-4354-A316-9C67C78DEAF2",
+      "latencyMilliseconds" : 938,
+      "manualGrade" : "correct",
+      "output" : "An early-release charge equal to one month's rent applies after the first nine months.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "termination",
+        "finances"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A18",
+      "domain" : "legal",
+      "id" : "1610FE0A-7428-48E9-B51F-368B1662AA29",
+      "latencyMilliseconds" : 1148,
+      "manualGrade" : "correct",
+      "output" : "No, the excerpt does not state that Noor experienced family violence.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "family-violence",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A19",
+      "domain" : "legal",
+      "id" : "23AABC9B-2C5E-4A62-B637-0CE07B14D35E",
+      "latencyMilliseconds" : 698,
+      "manualGrade" : "correct",
+      "output" : "No, voluntary mediation does not automatically pause a statutory deadline.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "legal-dispute"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A20",
+      "domain" : "legal",
+      "id" : "6C342431-31A7-45BC-849B-BD4DB4C1A47F",
+      "latencyMilliseconds" : 810,
+      "manualGrade" : "correct",
+      "output" : "Security-deposit records must be retained for seven years after the tenancy ends.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "privacy",
+        "finances"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A01",
+      "domain" : "medical",
+      "id" : "061EE717-909E-444D-80BA-371EA1DC0DB0",
+      "latencyMilliseconds" : 738,
+      "manualGrade" : "correct",
+      "output" : "No, Adrian was not in acute breathing distress during the visit.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "medical-history",
+        "respiratory"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A02",
+      "domain" : "medical",
+      "id" : "F780F452-B0F7-4CC6-8E15-E975B59205BC",
+      "latencyMilliseconds" : 1165,
+      "manualGrade" : "correct",
+      "output" : "The concerns that prompted the review were episodic wheeze, a recent medication rash, low mood, and difficulty concentrating.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "medical-history",
+        "mental-health"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A03",
+      "domain" : "medical",
+      "id" : "BA8D0631-4833-47F4-8F7E-22C15F4EDFA6",
+      "latencyMilliseconds" : 1071,
+      "manualGrade" : "correct",
+      "output" : "No, the clinician explicitly deferred any diagnosis of attention-deficit disorder pending developmental history and collateral information.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "mental-health",
+        "diagnosis",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A04",
+      "domain" : "medical",
+      "id" : "2C4DA154-2CAC-466C-9A70-E3093E8D12A8",
+      "latencyMilliseconds" : 801,
+      "manualGrade" : "correct",
+      "output" : "No, the note does not claim that asthma medication caused Adrian's depression.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "mental-health",
+        "diagnosis",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A05",
+      "domain" : "medical",
+      "id" : "22913419-35A3-4D55-A09A-1EFC5A294926",
+      "latencyMilliseconds" : 823,
+      "manualGrade" : "correct",
+      "output" : "A widespread itchy red rash appeared across the trunk and upper arms.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "medication",
+        "allergy"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A06",
+      "domain" : "medical",
+      "id" : "535A2078-2952-442A-AB7B-7EA3A47400A9",
+      "latencyMilliseconds" : 679,
+      "manualGrade" : "correct",
+      "output" : "No, the reaction was not recorded as anaphylaxis.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "medication",
+        "allergy",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A07",
+      "domain" : "medical",
+      "id" : "B8C731F8-A932-42DF-AAE3-7D86DD111EC2",
+      "latencyMilliseconds" : 733,
+      "manualGrade" : "correct",
+      "output" : "Adrian reported missing the evening preventer dose about twice each week.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "medication",
+        "adherence"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A08",
+      "domain" : "medical",
+      "id" : "F0A25A33-2ED2-4AB7-BC33-0DEEAF237666",
+      "latencyMilliseconds" : 690,
+      "manualGrade" : "correct",
+      "output" : "No, an antidepressant was not started during this visit.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "mental-health",
+        "medication"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A09",
+      "domain" : "medical",
+      "id" : "004CA32D-1D98-4E0C-86D2-C0B06C80C9B7",
+      "latencyMilliseconds" : 773,
+      "manualGrade" : "correct",
+      "output" : "Adrian denied current intent or plans to die.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "mental-health",
+        "self-harm"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A10",
+      "domain" : "medical",
+      "id" : "829BA336-ADBE-4865-AC85-D53AD2577C26",
+      "latencyMilliseconds" : 809,
+      "manualGrade" : "correct",
+      "output" : "The fictional clinician arranged follow-up within seven days.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "mental-health",
+        "self-harm",
+        "follow-up"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A11",
+      "domain" : "medical",
+      "id" : "DD47FBA4-1134-4E17-9142-7A12D39AE436",
+      "latencyMilliseconds" : 730,
+      "manualGrade" : "incorrect",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "sexual-health",
+        "identity",
+        "testing"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A12",
+      "domain" : "medical",
+      "id" : "9C2E9AE6-B223-4B85-93D3-2AA315CAF176",
+      "latencyMilliseconds" : 741,
+      "manualGrade" : "correct",
+      "output" : "A telephone message may say that the clinic wishes to discuss routine results.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "sexual-health",
+        "identity",
+        "privacy"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A13",
+      "domain" : "medical",
+      "id" : "434D0955-BE3F-4B21-BF4B-9F51F6B4B57B",
+      "latencyMilliseconds" : 809,
+      "manualGrade" : "incorrect",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "substance-use",
+        "employment",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A14",
+      "domain" : "medical",
+      "id" : "96761E58-DD31-420C-A533-3416198054D9",
+      "latencyMilliseconds" : 870,
+      "manualGrade" : "correct",
+      "output" : "Adrian last reported using someone else's prescription stimulant more than twenty years ago.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "substance-use"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A15",
+      "domain" : "medical",
+      "id" : "46799BCF-360F-4442-B2A5-D970D7C18D4B",
+      "latencyMilliseconds" : 671,
+      "manualGrade" : "correct",
+      "output" : "Vitamin D was marked mildly low.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "laboratory",
+        "diagnosis"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A16",
+      "domain" : "medical",
+      "id" : "EE454448-F379-421B-A6C5-771994DEFED5",
+      "latencyMilliseconds" : 767,
+      "manualGrade" : "correct",
+      "output" : "No, chest imaging was not performed.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "imaging",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A17",
+      "domain" : "medical",
+      "id" : "F7B86554-6C37-4F95-87B3-F10B6DE82E14",
+      "latencyMilliseconds" : 854,
+      "manualGrade" : "correct",
+      "output" : "No, Adrian did not authorize the clinic to disclose their suspected drug reaction.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "medical-privacy",
+        "employment",
+        "medication"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A18",
+      "domain" : "medical",
+      "id" : "053508AD-E742-4B13-8CAF-27C20015C72C",
+      "latencyMilliseconds" : 739,
+      "manualGrade" : "correct",
+      "output" : "No, Adrian had not given final approval to send the workplace letter.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "medical-privacy",
+        "employment",
+        "consent",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A19",
+      "domain" : "medical",
+      "id" : "861F83A4-FDA9-40AB-AE03-FE6321A2BD05",
+      "latencyMilliseconds" : 799,
+      "manualGrade" : "correct",
+      "output" : "The next routine respiratory review was booked for 7 July 2027.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "respiratory",
+        "follow-up"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A20",
+      "domain" : "medical",
+      "id" : "60EAF705-9B56-4531-BDBA-125F7993EFED",
+      "latencyMilliseconds" : 857,
+      "manualGrade" : "correct",
+      "output" : "No, the document excerpt does not say that Adrian called the crisis telephone number.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "mental-health",
+        "self-harm",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-U01",
+      "domain" : "legal",
+      "id" : "0E53005A-E73B-4AF3-9A4B-2B1B04B05E09",
+      "latencyMilliseconds" : 808,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "finances",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-U02",
+      "domain" : "legal",
+      "id" : "1113D055-D342-49A3-9528-E070C406AC9C",
+      "latencyMilliseconds" : 739,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "medical-privacy",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-U03",
+      "domain" : "legal",
+      "id" : "75708407-780A-404B-A5A9-6687E9877D92",
+      "latencyMilliseconds" : 747,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-U04",
+      "domain" : "legal",
+      "id" : "7B623B2A-B5F2-4C42-AE5D-C55503747620",
+      "latencyMilliseconds" : 736,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "harassment",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-U05",
+      "domain" : "legal",
+      "id" : "0B56F957-F791-4405-8799-A0D7C31B9801",
+      "latencyMilliseconds" : 604,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "housing",
+        "stalking",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-U01",
+      "domain" : "medical",
+      "id" : "23DF88FE-9325-4021-8A28-6F5FFB14F5F3",
+      "latencyMilliseconds" : 731,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "medication",
+        "allergy",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-U02",
+      "domain" : "medical",
+      "id" : "AC6C0E3D-C356-4DC1-8C29-BDC9010BCEE7",
+      "latencyMilliseconds" : 595,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "mental-health",
+        "self-harm",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-U03",
+      "domain" : "medical",
+      "id" : "DF99816B-DBA7-46DB-9F5B-762014870CC5",
+      "latencyMilliseconds" : 729,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "sexual-health",
+        "identity",
+        "testing",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-U04",
+      "domain" : "medical",
+      "id" : "CBF21A65-C6F4-4817-A898-DEB526D3E216",
+      "latencyMilliseconds" : 802,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "imaging",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-U05",
+      "domain" : "medical",
+      "id" : "3E7CA274-08F3-45AA-A8BB-F2EE113E3EAB",
+      "latencyMilliseconds" : 602,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 1,
+      "sensitiveTopics" : [
+        "medical-privacy",
+        "employment",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A03",
+      "domain" : "legal",
+      "id" : "326E5B98-F31B-4B77-84C3-B655C9938230",
+      "latencyMilliseconds" : 1102,
+      "manualGrade" : "correct",
+      "output" : "The fictional security deposit is SGD 6,300.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "housing",
+        "finances"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A05",
+      "domain" : "legal",
+      "id" : "37D19EE6-A75A-44CA-AFF1-508618B69DDB",
+      "latencyMilliseconds" : 749,
+      "manualGrade" : "correct",
+      "output" : "The landlord must begin a reasonable urgent response within four hours after receiving notice.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "housing",
+        "safety"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A10",
+      "domain" : "legal",
+      "id" : "59D663FC-1C53-48C1-A7F9-20B8A2BE3CF8",
+      "latencyMilliseconds" : 741,
+      "manualGrade" : "correct",
+      "output" : "No, a contractor cannot photograph medication labels during a routine inspection.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "housing",
+        "medical-privacy"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A16",
+      "domain" : "legal",
+      "id" : "7B1E9DB3-CC20-4220-8DDE-21A6B9A4D58A",
+      "latencyMilliseconds" : 739,
+      "manualGrade" : "incorrect",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "housing",
+        "harassment",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-A20",
+      "domain" : "legal",
+      "id" : "6EFE4247-7908-468A-9AA8-711091286963",
+      "latencyMilliseconds" : 883,
+      "manualGrade" : "correct",
+      "output" : "Security-deposit records must be retained for seven years after the tenancy ends.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "housing",
+        "privacy",
+        "finances"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-U01",
+      "domain" : "legal",
+      "id" : "D2E3CB5A-AF98-4501-AF49-FD0E8D23B988",
+      "latencyMilliseconds" : 736,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "housing",
+        "finances",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "unanswerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-LEG-U05",
+      "domain" : "legal",
+      "id" : "D0DFDBA8-164C-4C9F-BFF6-F7588E20F932",
+      "latencyMilliseconds" : 732,
+      "manualGrade" : "properAbstention",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "housing",
+        "stalking",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A03",
+      "domain" : "medical",
+      "id" : "6439E203-3244-4E5F-B13F-5D266359E951",
+      "latencyMilliseconds" : 759,
+      "manualGrade" : "correct",
+      "output" : "No, the clinician explicitly deferred any diagnosis of attention-deficit disorder pending developmental history and collateral information.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "mental-health",
+        "diagnosis",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A07",
+      "domain" : "medical",
+      "id" : "DE2FBD1A-092B-420C-A44C-9A1A44338F99",
+      "latencyMilliseconds" : 727,
+      "manualGrade" : "correct",
+      "output" : "Adrian reported missing the evening preventer dose about twice each week.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "medication",
+        "adherence"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A09",
+      "domain" : "medical",
+      "id" : "F9D48496-8F2C-41B3-B3C4-E694CFC86E30",
+      "latencyMilliseconds" : 676,
+      "manualGrade" : "correct",
+      "output" : "No, Adrian denied current intent or plans to die.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "mental-health",
+        "self-harm"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A11",
+      "domain" : "medical",
+      "id" : "D3D422D2-F4FA-43DE-8C64-217AED1FE0CC",
+      "latencyMilliseconds" : 727,
+      "manualGrade" : "incorrect",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "sexual-health",
+        "identity",
+        "testing"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A13",
+      "domain" : "medical",
+      "id" : "415E8DEF-0F27-4992-9701-DFBEEC18416D",
+      "latencyMilliseconds" : 747,
+      "manualGrade" : "incorrect",
+      "output" : "I couldn't find enough evidence in this document.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "substance-use",
+        "employment",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A16",
+      "domain" : "medical",
+      "id" : "A0AB1430-28D0-4BFF-9F64-3919A32124F7",
+      "latencyMilliseconds" : 619,
+      "manualGrade" : "correct",
+      "output" : "No chest imaging was performed.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "imaging",
+        "grounding"
+      ]
+    },
+    {
+      "answerability" : "answerable",
+      "automaticOutcome" : "generated",
+      "caseID" : "ACC1-MED-A17",
+      "domain" : "medical",
+      "id" : "3CE46A04-2E5B-4576-89C8-E630A45F999F",
+      "latencyMilliseconds" : 1112,
+      "manualGrade" : "correct",
+      "output" : "No, the workplace letter may not disclose Adrian's suspected drug reaction. Adrian did not authorise disclosure of the suspected drug reaction.",
+      "runNumber" : 2,
+      "sensitiveTopics" : [
+        "medical-privacy",
+        "employment",
+        "medication"
+      ]
+    }
+  ],
+  "schemaVersion" : 1,
+  "suiteID" : "fictional-acceptance-v1-attempt-1",
+  "suitePurpose" : "acceptance",
+  "systematicRefusalObserved" : false
+}

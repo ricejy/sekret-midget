@@ -16,7 +16,7 @@ Each resolved excerpt is 150–400 words. The names, identifiers, dates, diagnos
 | File | Purpose | Prompt | Status |
 |---|---|---|---|
 | `development_suite.json` | Development/tuning | `guardrail-v1` | Completed on iOS 26.5.2; results committed |
-| `acceptance_attempt_1.json` | Acceptance attempt 1 | `guardrail-v1` | Passed on iOS 26.5.2; results committed |
+| `acceptance_attempt_1.json` | Acceptance attempt 1 | `guardrail-v1` | Passed on iOS 26.5.2 and rerun successfully on iOS 26.6; evidence recorded |
 
 The `guardrail-v1` prompt was frozen after the development run. Acceptance attempt 1 uses a new fictional residential lease and a new fictional medical record. It deliberately covers medication reactions, medical privacy, accommodations, and statements of permission versus evidence that an event actually occurred, without reusing development questions or expected answers.
 
@@ -29,6 +29,13 @@ The full gate passed on 2026-08-11 using an iPhone 15 Pro Max running iOS 26.5.2
 - Private evidence is aggregate-only in `private_smoke_2026-08-11.json`. It contains no excerpts, questions, expected answers, generated responses, names, diagnoses, or document details.
 
 This pass applies only to the recorded OS/model and `guardrail-v1`. Re-run synthetic acceptance and the private smoke test after any system-model change.
+
+The system-model gate was rechecked using the same iPhone 15 Pro Max. The synthetic acceptance run was exported on iOS 26.6, and the private smoke run was completed on iOS 26.6.1 (23G83). Foundation Models does not expose a separate system-model version to the app, so the OS/build is the recorded model-runtime identifier:
+
+- Acceptance attempt 1: 36/40 answerable cases correct, zero benign refusals, and 10/10 unanswerable cases correctly abstained; median initial latency 802 ms.
+- Four answerable cases returned the exact insufficient-evidence sentence initially. One recovered on its required rerun; three repeated the conservative abstention. No systematic refusal category was observed.
+- Private smoke test on iOS 26.6.1: 10/10 correct, zero false abstentions, factual errors, invented answers, hard refusals, verbal refusals, or runtime failures; median latency 2,376 ms.
+- Synthetic results are in `fictional-acceptance-v1-attempt-1-ios-26.6-results.json`. Private evidence is aggregate-only in `private_smoke_2026-09-05.json`.
 
 Validate a suite from the repository root on Windows or macOS with PowerShell:
 

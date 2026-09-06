@@ -367,10 +367,17 @@ private struct PrivateSmokeTestView: View {
             $0.grade == .hardGuardrailRefusal || $0.grade == .verbalRefusal
         }.count
         let invented = summaries.filter { $0.grade == .hallucination }.count
+        let medianLatency = medianLatencyMilliseconds(
+            summaries.map(\.latencyMilliseconds)
+        )
         return VStack(alignment: .leading, spacing: 6) {
             Text("Session-only aggregate").font(.headline)
             Text("Cases: \(summaries.count)/10 · correct: \(correct) · refusals: \(refusals) · invented: \(invented)")
                 .font(.subheadline)
+            Text(
+                "Median latency: \(medianLatency.map { "\($0) ms" } ?? "Not available")"
+            )
+            .font(.subheadline)
             if summaries.count == 10 {
                 Label(
                     refusals == 0 && correct >= 8 && invented == 0

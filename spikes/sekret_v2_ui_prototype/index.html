@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Sekret v2 UI prototype</title>
+  <style>
+    /* Three variants of the complete Sekret shell, switchable via ?variant=. */
+    :root {
+      color-scheme: light;
+      --ink: #172337;
+      --muted: #687386;
+      --quiet: #8992a1;
+      --paper: #f4f5f2;
+      --surface: #ffffff;
+      --soft: #edf1f6;
+      --line: rgba(31, 44, 65, 0.12);
+      --blue: #2f63d5;
+      --blue-soft: #eaf0ff;
+      --green: #287b62;
+      --green-soft: #e5f4ee;
+      --amber: #9a6419;
+      --amber-soft: #fff3dc;
+      --red: #b94646;
+      --shadow: 0 28px 80px rgba(23, 35, 55, 0.2);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 18% 12%, rgba(79, 111, 177, 0.13), transparent 34%),
+        radial-gradient(circle at 82% 78%, rgba(111, 145, 128, 0.12), transparent 36%),
+        #e9ecef;
+      display: grid;
+      place-items: center;
+      padding: 28px 20px 96px;
+    }
+
+    button, input { font: inherit; }
+    button { color: inherit; }
+
+    .stage {
+      display: grid;
+      gap: 14px;
+      justify-items: center;
+    }
+
+    .prototype-note {
+      color: #566174;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .phone {
+      position: relative;
+      width: min(390px, calc(100vw - 24px));
+      height: min(844px, calc(100vh - 138px));
+      min-height: 650px;
+      overflow: hidden;
+      background: var(--paper);
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      border-radius: 42px;
+      box-shadow: var(--shadow);
+      isolation: isolate;
+    }
+
+    .phone::before {
+      content: "";
+      position: absolute;
+      z-index: 20;
+      top: 10px;
+      left: 50%;
+      width: 116px;
+      height: 31px;
+      transform: translateX(-50%);
+      background: #0d1118;
+      border-radius: 18px;
+      pointer-events: none;
+    }
+
+    .screen {
+      height: 100%;
+      display: grid;
+      grid-template-rows: 52px minmax(0, 1fr) 72px;
+      padding-top: 10px;
+    }
+
+    .status-bar {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      padding: 0 25px 7px;
+      font-size: 12px;
+      font-weight: 650;
+      position: relative;
+      z-index: 21;
+    }
+
+    .status-icons { letter-spacing: 2px; font-size: 10px; }
+    .viewport { min-height: 0; overflow: hidden; position: relative; }
+    .page { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+
+    .icon-button {
+      width: 36px;
+      height: 36px;
+      border-radius: 18px;
+      border: 0;
+      background: transparent;
+      display: grid;
+      place-items: center;
+      font-size: 22px;
+      cursor: pointer;
+    }
+
+    .nav {
+      min-height: 52px;
+      display: grid;
+      grid-template-columns: 44px 1fr 44px;
+      align-items: center;
+      padding: 0 14px;
+      border-bottom: 1px solid transparent;
+    }
+
+    .nav-title { text-align: center; min-width: 0; }
+    .nav-title strong { display: block; font-size: 16px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nav-title span { display: block; color: var(--green); font-size: 10px; margin-top: 3px; }
+
+    .tabbar {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      align-items: start;
+      background: rgba(250, 251, 252, 0.94);
+      border-top: 1px solid var(--line);
+      backdrop-filter: blur(18px);
+      padding: 7px 12px 14px;
+      z-index: 10;
+    }
+
+    .tab {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--quiet);
+      display: grid;
+      justify-items: center;
+      gap: 2px;
+      font-size: 10px;
+      cursor: pointer;
+    }
+
+    .tab .glyph { font-size: 20px; line-height: 24px; }
+    .tab.active { color: var(--blue); font-weight: 650; }
+
+    .scroll {
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: none;
+    }
+    .scroll::-webkit-scrollbar { display: none; }
+
+    .chip {
+      border: 0;
+      border-radius: 999px;
+      padding: 7px 10px;
+      background: var(--soft);
+      color: var(--ink);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .mode-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      padding: 3px;
+      border-radius: 11px;
+      background: rgba(79, 91, 111, 0.1);
+    }
+
+    .mode-switch button {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 11px;
+      font-weight: 620;
+      cursor: pointer;
+    }
+
+    .mode-switch button.active {
+      color: var(--ink);
+      background: var(--surface);
+      box-shadow: 0 1px 4px rgba(24, 35, 52, 0.14);
+    }
+
+    .composer {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 11px 11px 9px 15px;
+      box-shadow: 0 8px 22px rgba(25, 36, 55, 0.08);
+    }
+
+    .composer-row { display: flex; align-items: flex-end; gap: 8px; }
+    .composer textarea {
+      resize: none;
+      border: 0;
+      outline: 0;
+      min-height: 28px;
+      max-height: 82px;
+      flex: 1;
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+      line-height: 1.35;
+      padding: 4px 0;
+    }
+
+    .send {
+      flex: 0 0 auto;
+      width: 33px;
+      height: 33px;
+      border: 0;
+      border-radius: 17px;
+      background: var(--blue);
+      color: white;
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    .message-list { display: flex; flex-direction: column; gap: 18px; }
+    .user-message {
+      align-self: flex-end;
+      max-width: 78%;
+      padding: 10px 13px;
+      border-radius: 18px 18px 5px 18px;
+      background: var(--blue);
+      color: white;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .assistant-message { font-size: 14px; line-height: 1.52; }
+    .answer-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      margin-bottom: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: 0.01em;
+    }
+
+    .answer-label.grounded { color: var(--green); }
+    .source-card {
+      margin-top: 11px;
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--surface);
+      cursor: pointer;
+    }
+    .source-card strong { display: block; font-size: 12px; }
+    .source-card span { display: block; color: var(--muted); margin-top: 4px; font-size: 11px; }
+
+    .section-title {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: -0.025em;
+      line-height: 1.1;
+    }
+
+    .section-subtitle { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
+
+    .search {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(104, 115, 134, 0.1);
+      border-radius: 11px;
+      padding: 9px 11px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--ink); }
+
+    .catalogue { display: grid; gap: 1px; overflow: hidden; background: var(--line); }
+    .doc-row {
+      width: 100%;
+      appearance: none;
+      border: 0;
+      text-align: left;
+      display: grid;
+      grid-template-columns: 38px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 12px 14px;
+      background: var(--surface);
+      cursor: pointer;
+    }
+
+    .doc-icon {
+      width: 38px;
+      height: 44px;
+      border-radius: 8px;
+      background: var(--blue-soft);
+      color: var(--blue);
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      font-weight: 750;
+    }
+    .doc-icon.photo { background: var(--green-soft); color: var(--green); }
+    .doc-icon.text { background: #f1eafb; color: #7657a6; }
+    .doc-copy { min-width: 0; }
+    .doc-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+    .doc-copy span { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
+    .state { font-size: 10px; font-weight: 700; color: var(--green); }
+    .state.processing { color: var(--blue); }
+    .state.failed { color: var(--amber); }
+    .progress { height: 3px; background: var(--soft); border-radius: 2px; margin-top: 7px; overflow: hidden; }
+    .progress i { display: block; height: 100%; width: 62%; background: var(--blue); }
+
+    .settings-group { margin-top: 18px; }
+    .settings-label { margin: 0 12px 7px; color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em; }
+    .settings-card { overflow: hidden; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+    .setting-row { min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 10px 13px; border-bottom: 1px solid var(--line); font-size: 13px; }
+    .setting-row:last-child { border-bottom: 0; }
+    .setting-row .setting-copy { flex: 1; }
+    .setting-row .setting-copy span { display: block; color: var(--muted); font-size: 10px; margin-top: 2px; }
+    .setting-value { color: var(--muted); font-size: 12px; }
+    .danger { color: var(--red); }
+    .toggle { width: 42px; height: 24px; border-radius: 13px; border: 0; padding: 2px; background: #b8bfca; cursor: pointer; }
+    .toggle::after { content: ""; display: block; width: 20px; height: 20px; border-radius: 50%; background: white; transition: transform 150ms ease; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+    .toggle.on { background: var(--green); }
+    .toggle.on::after { transform: translateX(18px); }
+
+    .variant-switcher {
+      position: fixed;
+      z-index: 100;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: grid;
+      grid-template-columns: 42px auto 42px;
+      align-items: center;
+      gap: 4px;
+      min-width: 270px;
+      padding: 6px;
+      border-radius: 18px;
+      background: #141b27;
+      color: white;
+      box-shadow: 0 12px 36px rgba(15, 21, 32, 0.35);
+    }
+    .variant-switcher button { height: 34px; border: 0; border-radius: 12px; color: white; background: rgba(255,255,255,.1); cursor: pointer; font-size: 18px; }
+    .variant-label { text-align: center; font-size: 12px; font-weight: 650; }
+    .variant-label small { display: block; margin-top: 2px; color: #aeb8c8; font-weight: 450; }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 40;
+      background: rgba(12, 18, 28, 0.34);
+      display: flex;
+      align-items: flex-end;
+      backdrop-filter: blur(4px);
+    }
+    .sheet {
+      width: 100%;
+      max-height: 82%;
+      overflow-y: auto;
+      padding: 10px 18px 28px;
+      border-radius: 24px 24px 0 0;
+      background: var(--paper);
+      box-shadow: 0 -18px 44px rgba(20, 30, 46, 0.2);
+    }
+    .grabber { width: 38px; height: 5px; margin: 0 auto 16px; border-radius: 3px; background: #b6bec9; }
+    .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .sheet-head h2 { margin: 0; font-size: 20px; }
+    .text-button { border: 0; background: transparent; color: var(--blue); font-weight: 650; cursor: pointer; }
+    .source-option { display: flex; gap: 11px; align-items: center; padding: 13px 2px; border-bottom: 1px solid var(--line); }
+    .check { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 7px; background: var(--blue); color: white; font-size: 13px; }
+    .check.off { background: transparent; color: transparent; }
+    .source-option div:nth-child(2) { flex: 1; }
+    .source-option strong { display: block; font-size: 13px; }
+    .source-option span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+
+    .preview-sheet { height: 88%; display: flex; flex-direction: column; }
+    .preview-paper { flex: 1; overflow: auto; margin-top: 14px; padding: 24px 22px; background: white; border-radius: 12px 12px 4px 4px; box-shadow: 0 4px 16px rgba(24,35,52,.09); font-family: Georgia, serif; color: #2b3037; }
+    .preview-paper h3 { text-align: center; font-size: 15px; letter-spacing: .06em; }
+    .preview-paper h4 { margin-top: 28px; font-size: 13px; }
+    .preview-paper p { font-size: 12px; line-height: 1.65; }
+    mark { background: #fff0a9; border-radius: 2px; padding: 1px 2px; }
+
+    /* Variant A — familiar open transcript. */
+    .variant-a .chat-content { flex: 1; padding: 4px 20px 16px; }
+    .variant-a .chat-scroll { height: 100%; padding: 14px 20px 156px; }
+    .variant-a .chat-controls { position: absolute; left: 14px; right: 14px; bottom: 10px; }
+    .variant-a .scope-row { display: flex; gap: 7px; overflow-x: auto; padding: 0 4px 8px; scrollbar-width: none; }
+    .variant-a .mode-switch { width: 206px; margin: 0 auto 8px; }
+    .variant-a .knowledge-head, .variant-a .settings-head { padding: 16px 20px 12px; }
+    .variant-a .knowledge-tools { padding: 0 14px 12px; display: grid; gap: 10px; }
+    .variant-a .catalogue { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .variant-a .settings-scroll { padding: 0 14px 28px; }
+
+    /* Variant B — provenance shelf dominates the hierarchy. */
+    .variant-b { --paper: #f7f7f4; --blue: #355b9f; --blue-soft: #e8edf7; }
+    .variant-b .nav { min-height: 45px; border-bottom-color: var(--line); background: var(--surface); }
+    .variant-b .nav-title { text-align: left; padding-left: 6px; }
+    .variant-b .nav-title span { display: none; }
+    .variant-b .context-shelf { margin: 10px 12px 0; padding: 12px; border-radius: 15px; background: #1c2b3e; color: white; box-shadow: 0 8px 24px rgba(21,35,53,.14); }
+    .variant-b .shelf-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .variant-b .shelf-mode { font-size: 11px; color: #b8d0ff; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+    .variant-b .shelf-action { border: 0; background: rgba(255,255,255,.12); color: white; border-radius: 10px; padding: 6px 9px; font-size: 11px; }
+    .variant-b .shelf-sources { display: flex; gap: 6px; margin-top: 9px; overflow-x: auto; }
+    .variant-b .shelf-sources .chip { color: white; background: rgba(255,255,255,.1); }
+    .variant-b .chat-scroll { flex: 1; padding: 20px 18px 165px; }
+    .variant-b .assistant-message { padding: 14px; border-left: 3px solid #9bb5e9; background: rgba(255,255,255,.68); border-radius: 0 14px 14px 0; }
+    .variant-b .chat-controls { position: absolute; left: 12px; right: 12px; bottom: 10px; }
+    .variant-b .composer { border-radius: 14px; }
+    .variant-b .mode-switch { margin-bottom: 7px; background: transparent; display: flex; justify-content: flex-start; }
+    .variant-b .mode-switch button { flex: 0 0 auto; background: transparent; }
+    .variant-b .mode-switch button.active { background: var(--blue-soft); color: var(--blue); box-shadow: none; }
+    .variant-b .knowledge-head, .variant-b .settings-head { padding: 14px 18px 10px; border-bottom: 1px solid var(--line); background: var(--surface); }
+    .variant-b .knowledge-head .section-title, .variant-b .settings-head .section-title { font-size: 21px; }
+    .variant-b .knowledge-tools { padding: 10px 12px; display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    .variant-b .filter-button { border: 1px solid var(--line); background: var(--surface); border-radius: 11px; padding: 0 12px; color: var(--muted); }
+    .variant-b .catalogue { margin: 0 10px 18px; border: 1px solid var(--line); border-radius: 16px; }
+    .variant-b .settings-scroll { padding: 0 12px 24px; }
+
+    /* Variant C — soft workspace surfaces with composer as anchor. */
+    .variant-c { --paper: #f1f0eb; --surface: #fbfbf9; --blue: #405f86; --blue-soft: #e5ebf1; }
+    .variant-c .nav { padding: 4px 18px 0; min-height: 60px; grid-template-columns: 40px 1fr 40px; }
+    .variant-c .nav-title strong { font-family: Georgia, serif; font-size: 19px; font-weight: 560; }
+    .variant-c .chat-scroll { flex: 1; margin: 6px 12px 0; padding: 17px 15px 150px; border-radius: 24px 24px 0 0; background: rgba(255,255,255,.58); }
+    .variant-c .user-message { background: #25384e; }
+    .variant-c .assistant-message { padding-bottom: 4px; }
+    .variant-c .chat-controls { position: absolute; left: 10px; right: 10px; bottom: 8px; padding: 10px; border-radius: 24px; background: rgba(241,240,235,.9); backdrop-filter: blur(14px); }
+    .variant-c .mode-switch { width: fit-content; margin: 0 0 7px 5px; background: transparent; }
+    .variant-c .mode-switch button { padding: 6px 10px; }
+    .variant-c .mode-switch button.active { background: #25384e; color: white; box-shadow: none; }
+    .variant-c .scope-row { display: flex; gap: 6px; overflow-x: auto; padding: 0 4px 7px; }
+    .variant-c .composer { border: 0; border-radius: 18px; box-shadow: 0 5px 18px rgba(25,36,55,.1); }
+    .variant-c .knowledge-head, .variant-c .settings-head { margin: 6px 12px 0; padding: 18px; border-radius: 22px; background: #25384e; color: white; }
+    .variant-c .knowledge-head .section-subtitle, .variant-c .settings-head .section-subtitle { color: #c8d2df; }
+    .variant-c .knowledge-tools { padding: 12px; display: grid; gap: 9px; }
+    .variant-c .catalogue { margin: 0 12px 18px; border-radius: 18px; border: 1px solid var(--line); }
+    .variant-c .doc-row { padding-top: 14px; padding-bottom: 14px; }
+    .variant-c .settings-scroll { padding: 0 12px 24px; }
+    .variant-c .settings-card { border: 0; box-shadow: 0 5px 18px rgba(28,38,52,.06); }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --ink: #eef2f7;
+        --muted: #a6afbc;
+        --quiet: #7f8997;
+        --paper: #11161d;
+        --surface: #1b222c;
+        --soft: #252e3a;
+        --line: rgba(231, 238, 248, 0.12);
+        --blue: #7ea5ff;
+        --blue-soft: #263657;
+        --green: #72c5a9;
+        --green-soft: #193a31;
+        --amber: #e5b567;
+        --amber-soft: #45351e;
+        --red: #ff8e8e;
+      }
+      body { background: #090d12; }
+      .tabbar { background: rgba(22, 28, 36, .94); }
+      .preview-paper { background: #f5f1e8; color: #25282d; }
+      .variant-b { --paper: #11161d; --blue: #89adf3; --blue-soft: #24324d; }
+      .variant-b .assistant-message { background: rgba(255,255,255,.07); }
+      .variant-c { --paper: #121715; --surface: #1c2421; --blue: #94b4d6; --blue-soft: #283641; }
+      .variant-c .knowledge-head, .variant-c .settings-head, .variant-c .user-message { background: #24354a; }
+      .variant-c .chat-scroll { background: rgba(31,38,35,.76); }
+      .variant-c .chat-controls { background: rgba(18,23,21,.9); }
+    }
+
+    @media (max-height: 740px) {
+      body { padding-top: 10px; }
+      .phone { height: calc(100vh - 100px); min-height: 600px; border-radius: 30px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <div class="prototype-note">Throwaway UI study · fictional data</div>
+    <section class="phone" id="phone" aria-label="Sekret iPhone prototype"></section>
+  </main>
+
+  <nav class="variant-switcher" aria-label="Prototype variants">
+    <button type="button" id="previousVariant" aria-label="Previous variant">←</button>
+    <div class="variant-label" id="variantLabel"></div>
+    <button type="button" id="nextVariant" aria-label="Next variant">→</button>
+  </nav>
+
+  <script>
+    const variants = {
+      A: { name: "Native Focus", className: "variant-a" },
+      B: { name: "Context Shelf", className: "variant-b" },
+      C: { name: "Quiet Workspace", className: "variant-c" },
+    };
+    const tabs = ["chat", "knowledge", "settings"];
+    const state = {
+      mode: "knowledge",
+      faceId: true,
+      overlay: null,
+    };
+
+    function params() {
+      const search = new URLSearchParams(location.search);
+      const variant = variants[search.get("variant")] ? search.get("variant") : "A";
+      const tab = tabs.includes(search.get("tab")) ? search.get("tab") : "chat";
+      return { variant, tab };
+    }
+
+    function setParams(next) {
+      const current = params();
+      const search = new URLSearchParams(location.search);
+      search.set("variant", next.variant ?? current.variant);
+      search.set("tab", next.tab ?? current.tab);
+      history.replaceState({}, "", `${location.pathname}?${search.toString()}`);
+      state.overlay = null;
+      render();
+    }
+
+    function statusBar() {
+      return `<div class="status-bar"><span>9:41</span><span class="status-icons">● ◔ ▰</span></div>`;
+    }
+
+    function tabBar(active) {
+      const items = [
+        ["chat", "◯", "Chat"],
+        ["knowledge", "▤", "Knowledge"],
+        ["settings", "⚙︎", "Settings"],
+      ];
+      return `<nav class="tabbar" aria-label="Main tabs">${items.map(([id, glyph, label]) => `
+        <button class="tab ${active === id ? "active" : ""}" data-tab="${id}">
+          <span class="glyph">${glyph}</span><span>${label}</span>
+        </button>`).join("")}</nav>`;
+    }
+
+    function nav(title, subtitle, left = "☰", right = "＋") {
+      return `<header class="nav">
+        <button class="icon-button" type="button" aria-label="Open history">${left}</button>
+        <div class="nav-title"><strong>${title}</strong><span>${subtitle}</span></div>
+        <button class="icon-button" type="button" aria-label="New chat">${right}</button>
+      </header>`;
+    }
+
+    function modeSwitch() {
+      return `<div class="mode-switch" aria-label="Answer mode">
+        <button type="button" data-mode="general" class="${state.mode === "general" ? "active" : ""}">General</button>
+        <button type="button" data-mode="knowledge" class="${state.mode === "knowledge" ? "active" : ""}">Knowledge Base</button>
+      </div>`;
+    }
+
+    function sourceChips(clickable = true) {
+      if (state.mode !== "knowledge") return "";
+      return `<div class="scope-row">
+        <button class="chip" ${clickable ? "data-overlay=\"sources\"" : ""}>Employment Agreement ×</button>
+        <button class="chip" ${clickable ? "data-overlay=\"sources\"" : ""}>Benefits Guide ×</button>
+        <button class="chip" data-overlay="sources">＋ Sources</button>
+      </div>`;
+    }
+
+    function messages() {
+      const grounded = state.mode === "knowledge";
+      return `<div class="message-list">
+        <div class="user-message">How much notice do I need to give before leaving?</div>
+        <div class="assistant-message">
+          <div class="answer-label ${grounded ? "grounded" : ""}">${grounded ? "◆ Based on 2 selected sources" : "◇ General answer"}</div>
+          <div>${grounded
+            ? "Your employment agreement requires <strong>45 days’ written notice</strong>. The benefits guide also says coverage continues through the final day of employment."
+            : "Notice requirements usually depend on your contract and local employment rules. Check the termination clause in your agreement before relying on a general convention."}</div>
+          ${grounded ? `<div class="source-card" data-overlay="preview"><strong>Employment Agreement · Page 2</strong><span>Notice Period · “The employee will provide no fewer than 45 days…”</span></div>` : ""}
+        </div>
+        <div class="user-message">Does that include weekends?</div>
+        <div class="assistant-message">
+          <div class="answer-label ${grounded ? "grounded" : ""}">${grounded ? "◆ Based on 1 selected source" : "◇ General answer"}</div>
+          <div>${grounded
+            ? "The selected sources do not define the notice period as business days, so it appears to mean <strong>calendar days</strong>."
+            : "Unless an agreement specifically says “business days,” a period stated simply in days commonly includes weekends. Confirm the exact wording and applicable law."}</div>
+        </div>
+      </div>`;
+    }
+
+    function composer() {
+      return `<div class="composer"><div class="composer-row">
+        <textarea aria-label="Message" placeholder="Message Sekret" rows="1"></textarea>
+        <button class="send" type="button" aria-label="Send">↑</button>
+      </div></div>`;
+    }
+
+    function chatPage(variant) {
+      const isShelf = variant === "B";
+      return `<section class="page chat-page">
+        ${nav("Notice period", "On device")}
+        ${isShelf ? `<div class="context-shelf">
+          <div class="shelf-top"><span class="shelf-mode">${state.mode === "knowledge" ? "Knowledge Base" : "General answer"}</span><button class="shelf-action" data-overlay="sources">Change</button></div>
+          ${state.mode === "knowledge" ? `<div class="shelf-sources"><span class="chip">Employment Agreement</span><span class="chip">Benefits Guide</span></div>` : `<div class="shelf-sources"><span class="chip">No sources consulted</span></div>`}
+        </div>` : ""}
+        <div class="chat-scroll scroll">${messages()}</div>
+        <div class="chat-controls">
+          ${modeSwitch()}
+          ${isShelf ? "" : sourceChips()}
+          ${composer()}
+        </div>
+      </section>`;
+    }
+
+    function catalogueRows() {
+      return `<div class="catalogue">
+        <button class="doc-row" data-overlay="preview">
+          <span class="doc-icon">PDF</span>
+          <span class="doc-copy"><strong>Employment Agreement</strong><span>8 pages · 1.4 MB · Today</span></span>
+          <span class="state">INDEXED</span>
+        </button>
+        <button class="doc-row" data-overlay="preview">
+          <span class="doc-icon text">TXT</span>
+          <span class="doc-copy"><strong>Benefits Guide</strong><span>Pasted text · 18 KB · Today</span></span>
+          <span class="state">INDEXED</span>
+        </button>
+        <button class="doc-row">
+          <span class="doc-icon photo">IMG</span>
+          <span class="doc-copy"><strong>Clinic discharge notes</strong><span>OCR · Page 7 of 12</span><span class="progress"><i></i></span></span>
+          <span class="state processing">62%</span>
+        </button>
+        <button class="doc-row">
+          <span class="doc-icon">PDF</span>
+          <span class="doc-copy"><strong>Insurance statement</strong><span>OCR needs attention · Yesterday</span></span>
+          <span class="state failed">RETRY</span>
+        </button>
+      </div>`;
+    }
+
+    function knowledgePage(variant) {
+      return `<section class="page knowledge-page">
+        <div class="knowledge-head">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <div><h1 class="section-title">Knowledge Base</h1><p class="section-subtitle">4 local items · 2 ready for chat</p></div>
+            <button class="icon-button" type="button" aria-label="Add knowledge">＋</button>
+          </div>
+        </div>
+        <div class="knowledge-tools">
+          <label class="search">⌕ <input aria-label="Search knowledge" placeholder="Search titles and content"></label>
+          ${variant === "B" ? `<button class="filter-button">All ▾</button>` : `<div style="display:flex;gap:7px;overflow:auto"><button class="chip">All</button><button class="chip">Indexed</button><button class="chip">Needs attention</button></div>`}
+        </div>
+        <div class="scroll" style="flex:1">${catalogueRows()}</div>
+      </section>`;
+    }
+
+    function settingsPage() {
+      return `<section class="page settings-page">
+        <div class="settings-head"><h1 class="section-title">Settings</h1><p class="section-subtitle">Privacy, storage, and on-device intelligence</p></div>
+        <div class="settings-scroll scroll" style="flex:1">
+          <div class="settings-group">
+            <p class="settings-label">On device</p>
+            <div class="settings-card">
+              <div class="setting-row"><span>◆</span><div class="setting-copy">Apple Intelligence<span>Ready · processing remains local</span></div><span class="state">READY</span></div>
+              <div class="setting-row"><span>◉</span><div class="setting-copy">Privacy status<span>No accounts, sync, analytics, or network features</span></div><span class="setting-value">›</span></div>
+            </div>
+          </div>
+          <div class="settings-group">
+            <p class="settings-label">Protection</p>
+            <div class="settings-card">
+              <div class="setting-row"><span>◎</span><div class="setting-copy">Require Face ID<span>After 1 minute</span></div><button class="toggle ${state.faceId ? "on" : ""}" data-toggle="faceId" aria-label="Require Face ID"></button></div>
+              <div class="setting-row"><span>◷</span><div class="setting-copy">Chat retention<span>Delete only when I choose</span></div><span class="setting-value">Manual ›</span></div>
+            </div>
+          </div>
+          <div class="settings-group">
+            <p class="settings-label">Storage</p>
+            <div class="settings-card">
+              <div class="setting-row"><span>▤</span><div class="setting-copy">Local storage<span>Knowledge 24.8 MB · Chats 164 KB</span></div><span class="setting-value">25 MB ›</span></div>
+              <div class="setting-row danger"><span>−</span><div class="setting-copy">Delete all chats</div></div>
+              <div class="setting-row danger"><span>−</span><div class="setting-copy">Delete Knowledge Base</div></div>
+              <div class="setting-row danger"><span>!</span><div class="setting-copy">Erase all local data</div></div>
+            </div>
+          </div>
+          <div class="settings-group">
+            <p class="settings-label">About</p>
+            <div class="settings-card"><div class="setting-row"><div class="setting-copy">Sekret<span>Version 0.2.0 · iOS model runtime available</span></div><span class="setting-value">›</span></div></div>
+          </div>
+        </div>
+      </section>`;
+    }
+
+    function sourcesOverlay() {
+      return `<div class="overlay"><section class="sheet" role="dialog" aria-modal="true" aria-label="Choose sources">
+        <div class="grabber"></div>
+        <div class="sheet-head"><h2>Sources for this chat</h2><button class="text-button" data-close>Done</button></div>
+        <p class="section-subtitle">Future Knowledge Base turns search only these indexed items.</p>
+        <div class="source-option"><span class="check">✓</span><div><strong>Employment Agreement</strong><span>Indexed · 8 pages</span></div></div>
+        <div class="source-option"><span class="check">✓</span><div><strong>Benefits Guide</strong><span>Indexed · Pasted text</span></div></div>
+        <div class="source-option"><span class="check off">✓</span><div><strong>Clinic discharge notes</strong><span>Processing · available when indexed</span></div><span class="state processing">62%</span></div>
+        <div class="source-option"><span class="check off">✓</span><div><strong>Insurance statement</strong><span>Needs attention before use</span></div><span class="state failed">RETRY</span></div>
+        <button class="text-button" style="margin-top:16px" data-tab="knowledge">＋ Add to Knowledge Base</button>
+      </section></div>`;
+    }
+
+    function previewOverlay() {
+      return `<div class="overlay"><section class="sheet preview-sheet" role="dialog" aria-modal="true" aria-label="Document preview">
+        <div class="grabber"></div>
+        <div class="sheet-head"><button class="text-button" data-close>Close</button><h2>Page 2 of 8</h2><button class="text-button">Text</button></div>
+        <div class="preview-paper">
+          <h3>EMPLOYMENT AGREEMENT</h3>
+          <h4>4. NOTICE PERIOD</h4>
+          <p>The employment relationship may be ended by either party in accordance with this section.</p>
+          <p><mark>The employee will provide no fewer than forty-five (45) calendar days of written notice before the intended final day of employment.</mark></p>
+          <p>The company may waive all or part of the notice period in writing. Nothing in this section changes any right that cannot lawfully be waived.</p>
+        </div>
+      </section></div>`;
+    }
+
+    function render() {
+      const { variant, tab } = params();
+      const phone = document.getElementById("phone");
+      const page = tab === "chat" ? chatPage(variant) : tab === "knowledge" ? knowledgePage(variant) : settingsPage(variant);
+      phone.className = `phone ${variants[variant].className}`;
+      phone.innerHTML = `<div class="screen">${statusBar()}<div class="viewport">${page}</div>${tabBar(tab)}</div>${state.overlay === "sources" ? sourcesOverlay() : state.overlay === "preview" ? previewOverlay() : ""}`;
+      document.getElementById("variantLabel").innerHTML = `${variant} · ${variants[variant].name}<small>${tab === "knowledge" ? "Knowledge Base" : tab[0].toUpperCase() + tab.slice(1)}</small>`;
+      bind();
+    }
+
+    function bind() {
+      document.querySelectorAll("[data-tab]").forEach((element) => element.addEventListener("click", () => setParams({ tab: element.dataset.tab })));
+      document.querySelectorAll("[data-mode]").forEach((element) => element.addEventListener("click", () => { state.mode = element.dataset.mode; render(); }));
+      document.querySelectorAll("[data-overlay]").forEach((element) => element.addEventListener("click", () => { state.overlay = element.dataset.overlay; render(); }));
+      document.querySelectorAll("[data-close]").forEach((element) => element.addEventListener("click", () => { state.overlay = null; render(); }));
+      document.querySelectorAll("[data-toggle=faceId]").forEach((element) => element.addEventListener("click", () => { state.faceId = !state.faceId; render(); }));
+    }
+
+    function cycle(offset) {
+      const { variant } = params();
+      const keys = Object.keys(variants);
+      const index = (keys.indexOf(variant) + offset + keys.length) % keys.length;
+      setParams({ variant: keys[index] });
+    }
+
+    document.getElementById("previousVariant").addEventListener("click", () => cycle(-1));
+    document.getElementById("nextVariant").addEventListener("click", () => cycle(1));
+    window.addEventListener("keydown", (event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.matches("input, textarea, [contenteditable]") || target.closest("[contenteditable]"))) return;
+      if (event.key === "ArrowLeft") cycle(-1);
+      if (event.key === "ArrowRight") cycle(1);
+      if (event.key === "Escape" && state.overlay) { state.overlay = null; render(); }
+    });
+    window.addEventListener("popstate", render);
+    render();
+  </script>
+</body>
+</html>

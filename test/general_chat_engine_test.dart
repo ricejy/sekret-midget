@@ -337,7 +337,8 @@ void main() {
         await vault.close();
         final old = sqlite3.open(path);
         old.execute(
-          'ALTER TABLE turns DROP COLUMN failure; PRAGMA user_version = 2;',
+          'ALTER TABLE turns DROP COLUMN failure; DROP TABLE knowledge_pages; '
+          'ALTER TABLE knowledge_items DROP COLUMN processing_message; PRAGMA user_version = 2;',
         );
         old.close();
         vault = await openLocalDataVault(databasePath: path);

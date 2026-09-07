@@ -172,7 +172,48 @@ final class ChatWorkspace {
     String turnId,
     String text, {
     TurnOutcome outcome = TurnOutcome.generating,
-  }) => _run(() => _vault.chats.finishTurn(turnId, text, outcome));
+    TurnFailure? failure,
+  }) => _run(
+    () => _vault.chats.finishTurn(turnId, text, outcome, failure: failure),
+  );
+
+  /// Atomic General-only admission. Regeneration retains the original turn and
+  /// appends a new attempt without changing the chat's current mode/sources.
+  Future<TurnRecord> beginGeneralTurn({
+    required String chatId,
+    required String userText,
+    required ModelSnapshot model,
+    String? regenerateTurnId,
+  }) => _run(() async {
+    final chat = await _findChat(chatId);
+    var text = userText.trim();
+    if (regenerateTurnId != null) {
+      final original = (await _vault.chats.listTurns(
+        chatId,
+      )).firstWhere((turn) => turn.id == regenerateTurnId);
+      if (original.provenance.mode != ChatMode.general ||
+          original.outcome == TurnOutcome.generating) {
+        throw StateError(
+          'Only terminal General turns can be regenerated here.',
+        );
+      }
+      text = original.userText;
+    } else if (chat.mode != ChatMode.general) {
+      throw StateError('Choose General mode before sending.');
+    }
+    if (text.isEmpty) throw ArgumentError('Enter a message.');
+    return _vault.chats.appendTurn(
+      chatId: chatId,
+      userText: text,
+      assistantText: '',
+      outcome: TurnOutcome.generating,
+      mode: ChatMode.general,
+      sourceScopeIds: const [],
+      evidencePassageIds: const [],
+      citationEvidenceIndexes: const [],
+      model: model,
+    );
+  });
 
   Future<void> deleteFromTurn(String chatId, String turnId) =>
       _run(() => _vault.chats.deleteFromTurn(chatId, turnId));
@@ -257,8 +298,13 @@ final class ChatWorkspace {
   /// A deterministic, bounded extractive summary; no second model call or
   /// cross-chat state. Labels preserve the distinction between user/assistant.
   /// This context remains conversation data, never knowledge-base evidence.
-  Future<ChatContext> context(String chatId) => _run(() async {
-    final turns = await _vault.chats.listTurns(chatId);
+  Future<ChatContext> context(
+    String chatId, {
+    int? beforeOrdinal,
+  }) => _run(() async {
+    final turns = (await _vault.chats.listTurns(chatId))
+        .where((turn) => beforeOrdinal == null || turn.ordinal < beforeOrdinal)
+        .toList();
     const recentCount = 4;
     if (turns.length <= recentCount) return ChatContext(null, turns);
     final older = turns.sublist(0, turns.length - recentCount);

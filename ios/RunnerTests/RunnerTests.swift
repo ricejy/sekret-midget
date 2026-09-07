@@ -1,6 +1,8 @@
 import Foundation
+import Flutter
 import FoundationModels
 import NaturalLanguage
+import UIKit
 import XCTest
 
 @testable import Runner
@@ -243,6 +245,87 @@ final class RunnerTests: XCTestCase {
     )
   }
 
+  func testGeneralAndKnowledgeBaseUseDistinctRuntimeModes() async throws {
+    let runtime = FakeFoundationModelRuntime(status: .available, snapshots: ["Answer"])
+    let service = AppleFoundationModelService(runtime: runtime)
+    for mode in [FoundationModelMode.general, .knowledgeBase] {
+      var text = ""
+      for try await snapshot in try service.responseStream(prompt: "Question", mode: mode) {
+        text = snapshot
+      }
+      XCTAssertEqual(text, "Answer")
+    }
+    XCTAssertEqual(runtime.requestedModes, [.general, .knowledgeBase])
+  }
+
+  func testGeneralRuntimeStreamFailureIsNotCompletion() async throws {
+    let runtime = FakeFoundationModelRuntime(status: .available, failure: .guardrailViolation)
+    let service = AppleFoundationModelService(runtime: runtime)
+    do {
+      for try await _ in try service.responseStream(prompt: "Question", mode: .general) {}
+      XCTFail("Expected a terminal error")
+    } catch {
+      XCTAssertEqual(error as? FoundationModelBridgeFailure, .guardrailViolation)
+    }
+  }
+
+  @MainActor
+  func testPluginStopCancelsSilentStreamAndRejectsOverlap() async throws {
+    let runtime = FakeFoundationModelRuntime(status: .available, holdStream: true)
+    let plugin = AppleFoundationModelsPlugin(service: AppleFoundationModelService(runtime: runtime))
+    var events: [[String: Any]] = []
+    _ = plugin.onListen(withArguments: nil, eventSink: { value in
+      if let event = value as? [String: Any] { events.append(event) }
+    })
+    var startError: FlutterError?
+    plugin.handle(FlutterMethodCall(methodName: "generate", arguments: [
+      "requestId": "first", "prompt": "Hello", "mode": "general",
+    ]), result: { startError = $0 as? FlutterError })
+    XCTAssertNil(startError)
+    var overlapError: FlutterError?
+    plugin.handle(FlutterMethodCall(methodName: "generate", arguments: [
+      "requestId": "second", "prompt": "Hello", "mode": "general",
+    ]), result: { overlapError = $0 as? FlutterError })
+    XCTAssertEqual(overlapError?.code, "stream_failure")
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      plugin.handle(FlutterMethodCall(methodName: "cancel", arguments: ["requestId": "first"]),
+        result: { _ in continuation.resume() })
+    }
+    XCTAssertTrue(runtime.streamCancelled)
+    XCTAssertTrue(events.isEmpty)
+    XCTAssertEqual(runtime.requestedModes, [.general])
+    _ = plugin.onCancel(withArguments: nil)
+  }
+
+  @MainActor
+  func testBackgroundProducesInterruptionInsteadOfCompletion() async throws {
+    let runtime = FakeFoundationModelRuntime(status: .available, holdStream: true)
+    let plugin = AppleFoundationModelsPlugin(service: AppleFoundationModelService(runtime: runtime))
+    var events: [[String: Any]] = []
+    _ = plugin.onListen(withArguments: nil, eventSink: { value in
+      if let event = value as? [String: Any] { events.append(event) }
+    })
+    plugin.handle(FlutterMethodCall(methodName: "generate", arguments: [
+      "requestId": "background", "prompt": "Hello", "mode": "general",
+    ]), result: { _ in })
+    NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      plugin.handle(FlutterMethodCall(methodName: "cancel", arguments: ["requestId": "background"]),
+        result: { _ in continuation.resume() })
+    }
+    XCTAssertEqual(events.count, 1)
+    XCTAssertEqual(events.first?["code"] as? String, "generation_interrupted")
+    XCTAssertTrue(runtime.streamCancelled)
+    _ = plugin.onCancel(withArguments: nil)
+  }
+
+  @available(iOS 26.0, *)
+  func testGeneralInstructionsDoNotUseDocumentOnlyRules() {
+    XCTAssertEqual(SystemFoundationModelRuntime.generalPromptVersion, "general-v1")
+    XCTAssertTrue(SystemFoundationModelRuntime.generalInstructions.contains("legal, medical, or financial"))
+    XCTAssertFalse(SystemFoundationModelRuntime.generalInstructions.contains("only the supplied document"))
+  }
+
   @available(iOS 26.0, *)
   func testFoundationModelGenerationErrorsHaveStableBridgeCodes() {
     let context = LanguageModelSession.GenerationError.Context(
@@ -330,13 +413,15 @@ private final class FakeFoundationModelRuntime: FoundationModelRuntime {
     contextSize: Int = 4_096,
     tokenCount: Int = 1,
     snapshots: [String] = [],
-    failure: FoundationModelBridgeFailure? = nil
+    failure: FoundationModelBridgeFailure? = nil,
+    holdStream: Bool = false
   ) {
     self.status = status
     self.reportedContextSize = contextSize
     self.reportedTokenCount = tokenCount
     self.snapshots = snapshots
     self.failure = failure
+    self.holdStream = holdStream
   }
 
   let status: FoundationModelAvailabilityStatus
@@ -344,7 +429,10 @@ private final class FakeFoundationModelRuntime: FoundationModelRuntime {
   let reportedTokenCount: Int
   let snapshots: [String]
   let failure: FoundationModelBridgeFailure?
+  let holdStream: Bool
+  private(set) var streamCancelled = false
   private(set) var countedKinds: [FoundationModelTokenKind] = []
+  private(set) var requestedModes: [FoundationModelMode] = []
 
   func availability() -> FoundationModelAvailabilityStatus { status }
 
@@ -359,8 +447,13 @@ private final class FakeFoundationModelRuntime: FoundationModelRuntime {
     return reportedTokenCount
   }
 
-  func responseStream(prompt: String) -> AsyncThrowingStream<String, Error> {
-    AsyncThrowingStream { continuation in
+  func responseStream(prompt: String, mode: FoundationModelMode) -> AsyncThrowingStream<String, Error> {
+    requestedModes.append(mode)
+    return AsyncThrowingStream { continuation in
+      if holdStream {
+        continuation.onTermination = { [weak self] _ in self?.streamCancelled = true }
+        return
+      }
       if let failure {
         continuation.finish(throwing: failure)
         return

@@ -8,6 +8,7 @@ import 'token_counter.dart';
 final class AppleFoundationModels
     implements
         LlmBackend,
+        GeneralLlmBackend,
         LlmSettingsController,
         TokenCounter,
         ModelContextProbe {
@@ -112,74 +113,90 @@ final class AppleFoundationModels
     required String question,
     required List<String> evidence,
     required String prompt,
-  }) async* {
-    if (prompt.trim().isEmpty) {
-      throw const LlmException(
-        LlmFailureCode.streamFailure,
-        'The Foundation Models prompt must not be empty.',
-      );
-    }
+  }) => _generate(prompt, mode: 'knowledge-base');
+
+  @override
+  Stream<String> generateGeneral({required String prompt}) =>
+      _generate(prompt, mode: 'general');
+
+  Stream<String> _generate(String prompt, {required String mode}) {
     final requestId =
         '${DateTime.now().microsecondsSinceEpoch}-${_requestSequence++}';
-    final controller = StreamController<Object?>();
-    final subscription = _events.listen(
-      controller.add,
-      onError: controller.addError,
-      onDone: controller.close,
-    );
-    try {
-      await _channel.invokeMethod<void>('generate', {
-        'requestId': requestId,
-        'prompt': prompt,
-      });
-      await for (final event in controller.stream) {
-        if (event is! Map) {
-          continue;
-        }
-        final payload = event.cast<Object?, Object?>();
-        if (payload['requestId'] != requestId) {
-          continue;
-        }
-        switch (payload['type']) {
-          case 'snapshot':
-            final text = payload['text'];
-            if (text is! String) {
-              throw const LlmException(
-                LlmFailureCode.streamFailure,
-                'The Foundation Models stream returned invalid text.',
-              );
-            }
-            yield text;
-          case 'completed':
-            return;
-          case 'error':
-            final code = payload['code'];
-            throw LlmException(
-              _failureCode(code is String ? code : 'stream_failure'),
-              _safeMessage(code is String ? code : 'stream_failure'),
-            );
-        }
-      }
-      throw const LlmException(
-        LlmFailureCode.streamFailure,
-        'The Foundation Models stream ended before completion.',
-      );
-    } on MissingPluginException {
-      throw const LlmException(
-        LlmFailureCode.unavailable,
-        'The Foundation Models bridge is unavailable.',
-      );
-    } on PlatformException catch (error) {
-      throw LlmException(_failureCode(error.code), _safeMessage(error.code));
-    } finally {
-      await subscription.cancel();
-      await controller.close();
-      try {
-        await _channel.invokeMethod<void>('cancel', {'requestId': requestId});
-      } on Object {
-        // Cancellation is best-effort after the stream has already terminated.
-      }
+    late final StreamController<String> controller;
+    StreamSubscription<Object?>? subscription;
+    var ended = false;
+    void fail(String code) {
+      if (ended) return;
+      ended = true;
+      controller.addError(LlmException(_failureCode(code), _safeMessage(code)));
+      unawaited(controller.close());
     }
+
+    controller = StreamController<String>(
+      onListen: () {
+        if (prompt.trim().isEmpty) {
+          fail('stream_failure');
+          return;
+        }
+        subscription = _events.listen(
+          (event) {
+            if (ended) return;
+            if (event is! Map) {
+              return;
+            }
+            final payload = event.cast<Object?, Object?>();
+            if (payload['requestId'] != requestId) {
+              return;
+            }
+            switch (payload['type']) {
+              case 'snapshot':
+                final text = payload['text'];
+                if (text is! String) {
+                  fail('stream_failure');
+                  return;
+                }
+                controller.add(text);
+              case 'completed':
+                ended = true;
+                unawaited(controller.close());
+              case 'error':
+                final code = payload['code'];
+                fail(code is String ? code : 'stream_failure');
+            }
+          },
+          onError: (Object _) => fail('stream_failure'),
+          onDone: () => fail('stream_failure'),
+        );
+        unawaited(
+          _channel
+              .invokeMethod<void>('generate', {
+                'requestId': requestId,
+                'prompt': prompt,
+                'mode': mode,
+              })
+              .catchError((Object error) {
+                fail(
+                  error is PlatformException
+                      ? error.code
+                      : error is MissingPluginException
+                      ? 'model_unavailable'
+                      : 'stream_failure',
+                );
+              }),
+        );
+      },
+      onCancel: () async {
+        ended = true;
+        try {
+          await _channel.invokeMethod<void>('cancel', {'requestId': requestId});
+        } on Object {
+          // Cancellation is best-effort after the stream has already terminated.
+        } finally {
+          await subscription?.cancel();
+        }
+      },
+    );
+    return controller.stream;
   }
 
   @override
@@ -208,6 +225,7 @@ final class AppleFoundationModels
   }
 
   LlmFailureCode _failureCode(String code) => switch (code) {
+    'generation_interrupted' => LlmFailureCode.interrupted,
     'model_unavailable' => LlmFailureCode.unavailable,
     'context_overflow' => LlmFailureCode.contextOverflow,
     'guardrail_violation' => LlmFailureCode.guardrailViolation,
@@ -215,6 +233,7 @@ final class AppleFoundationModels
   };
 
   String _safeMessage(String code) => switch (code) {
+    'generation_interrupted' => 'The on-device response was interrupted.',
     'model_unavailable' => 'The on-device model is unavailable.',
     'context_overflow' => 'The request exceeds the on-device context window.',
     'guardrail_violation' =>

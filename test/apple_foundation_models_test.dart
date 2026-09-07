@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,7 +69,7 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
             channel,
-          (_) async => throw PlatformException(
+            (_) async => throw PlatformException(
               code: 'model_unavailable',
               message: 'PRIVATE NATIVE DETAIL',
             ),
@@ -193,4 +194,152 @@ void main() {
     expect(prompt, contains('Payment is due in ten days.'));
     expect(prompt, endsWith('</question>'));
   });
+
+  test(
+    'General instruction token input matches the native session exactly',
+    () {
+      final native = File(
+        'ios/Runner/AppleFoundationModelsPlugin.swift',
+      ).readAsStringSync();
+      final match = RegExp(
+        r'static let generalInstructions = "([^"]+)"',
+      ).firstMatch(native);
+      expect(match?.group(1), generalInstructions);
+    },
+  );
+
+  test(
+    'General sends an explicit mode and ignores other request events',
+    () async {
+      final events = StreamController<Object?>.broadcast();
+      addTearDown(events.close);
+      final calls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            calls.add(call);
+            if (call.method == 'generate') {
+              final args = call.arguments as Map;
+              expect(args['mode'], 'general');
+              expect(args.containsKey('evidence'), isFalse);
+              scheduleMicrotask(() {
+                events.add({
+                  'requestId': 'unrelated',
+                  'type': 'snapshot',
+                  'text': 'Wrong chat',
+                });
+                events.add({
+                  'requestId': args['requestId'],
+                  'type': 'snapshot',
+                  'text': 'General answer',
+                });
+                events.add({
+                  'requestId': args['requestId'],
+                  'type': 'completed',
+                });
+              });
+            }
+            return null;
+          });
+      final models = AppleFoundationModels(
+        channel: channel,
+        events: events.stream,
+      );
+      expect(await models.generateGeneral(prompt: 'Question').toList(), [
+        'General answer',
+      ]);
+      expect(calls.last.method, 'cancel');
+    },
+  );
+
+  test(
+    'cancelling a silent General stream reaches native before detaching events',
+    () async {
+      var nativeCancelled = false;
+      final events = StreamController<Object?>.broadcast(
+        onCancel: () {
+          expect(nativeCancelled, isTrue);
+        },
+      );
+      addTearDown(events.close);
+      final started = Completer<void>();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            if (call.method == 'generate') started.complete();
+            if (call.method == 'cancel') nativeCancelled = true;
+            return null;
+          });
+      final models = AppleFoundationModels(
+        channel: channel,
+        events: events.stream,
+      );
+      final subscription = models
+          .generateGeneral(prompt: 'Question')
+          .listen((_) {});
+      await started.future;
+      await subscription.cancel().timeout(const Duration(seconds: 2));
+      expect(nativeCancelled, isTrue);
+    },
+  );
+
+  test(
+    'native background interruption remains distinct from model failure',
+    () async {
+      final events = StreamController<Object?>.broadcast();
+      addTearDown(events.close);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            if (call.method == 'generate') {
+              final id = (call.arguments as Map)['requestId'];
+              scheduleMicrotask(
+                () => events.add({
+                  'requestId': id,
+                  'type': 'error',
+                  'code': 'generation_interrupted',
+                }),
+              );
+            }
+            return null;
+          });
+      final models = AppleFoundationModels(
+        channel: channel,
+        events: events.stream,
+      );
+      await expectLater(
+        models.generateGeneral(prompt: 'Question').drain<void>(),
+        throwsA(
+          isA<LlmException>().having(
+            (e) => e.code,
+            'code',
+            LlmFailureCode.interrupted,
+          ),
+        ),
+      );
+    },
+  );
+
+  test(
+    'event channel ending without completion is a sanitized failure',
+    () async {
+      final events = StreamController<Object?>.broadcast();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            if (call.method == 'generate') scheduleMicrotask(events.close);
+            return null;
+          });
+      final models = AppleFoundationModels(
+        channel: channel,
+        events: events.stream,
+      );
+      await expectLater(
+        models.generateGeneral(prompt: 'Question').drain<void>(),
+        throwsA(
+          isA<LlmException>().having(
+            (e) => e.code,
+            'code',
+            LlmFailureCode.streamFailure,
+          ),
+        ),
+      );
+    },
+  );
 }

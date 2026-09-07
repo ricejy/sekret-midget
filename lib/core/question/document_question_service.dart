@@ -163,7 +163,8 @@ AnswerFailure answerFailureFor(LlmFailureCode code) => switch (code) {
     message:
         'The on-device model could not transform this document content. Try a narrower factual question.',
   ),
-  LlmFailureCode.streamFailure => const AnswerFailure(
+  LlmFailureCode.streamFailure ||
+  LlmFailureCode.interrupted => const AnswerFailure(
     kind: AnswerFailureKind.streamFailure,
     message: 'The on-device answer stopped before completion. Try again.',
   ),

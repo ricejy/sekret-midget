@@ -38,7 +38,7 @@ enum KnowledgeProcessingState {
   needsReindexing,
 }
 
-const localDataVaultSchemaVersion = 3;
+const localDataVaultSchemaVersion = 4;
 
 final class VaultWriteException implements Exception {
   const VaultWriteException(this.cause);
@@ -136,6 +136,8 @@ final class KnowledgeItemRecord {
     required this.updatedAt,
     required this.indexedAt,
     required this.checkpoint,
+    this.sourceSize = 0,
+    this.processingMessage,
   });
 
   final String id;
@@ -149,6 +151,25 @@ final class KnowledgeItemRecord {
   final DateTime updatedAt;
   final DateTime? indexedAt;
   final ProcessingCheckpoint? checkpoint;
+  final int sourceSize;
+  final String? processingMessage;
+}
+
+final class KnowledgePage {
+  const KnowledgePage({
+    required this.number,
+    required this.text,
+    this.ocrConfidence,
+  });
+  final int number;
+  final String text;
+  final double? ocrConfidence;
+}
+
+final class KnowledgeSource {
+  const KnowledgeSource({required this.bytes, required this.pages});
+  final Uint8List bytes;
+  final List<KnowledgePage> pages;
 }
 
 final class EvidencePassageDraft {
@@ -180,6 +201,8 @@ final class StoredEvidencePassage {
     required this.heading,
     required this.page,
     required this.tokenCount,
+    this.vector,
+    this.vectorScale = 1,
   });
 
   final int id;
@@ -189,6 +212,8 @@ final class StoredEvidencePassage {
   final String heading;
   final int? page;
   final int tokenCount;
+  final Uint8List? vector;
+  final double vectorScale;
 }
 
 final class ModelSnapshot {
@@ -402,6 +427,17 @@ abstract interface class VaultChats {
 }
 
 abstract interface class VaultKnowledge {
+  Future<KnowledgeSource> source(String id);
+  Future<List<KnowledgePage>> pages(String id);
+  Future<void> savePage(String id, KnowledgePage page, int totalPages);
+  Future<void> setState(
+    String id,
+    KnowledgeProcessingState state, {
+    String? message,
+    bool reset = false,
+  });
+  Future<void> rename(String id, String title);
+  Future<List<int>> lexicalRanks(String id, String query, int limit);
   Future<KnowledgeItemRecord> beginProcessing({
     required String title,
     required KnowledgeSourceType sourceType,
@@ -518,7 +554,8 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
         COALESCE((
           SELECT SUM(length(stage) + length(artifact))
           FROM processing_checkpoints
-        ), 0) AS bytes;
+        ), 0) + COALESCE((SELECT SUM(length(text)) FROM knowledge_pages), 0)
+        AS bytes;
     ''').single['bytes']
             as int;
     final chatBytes =
@@ -623,6 +660,9 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
           case 2:
             _database.execute('ALTER TABLE turns ADD COLUMN failure TEXT;');
             version = 3;
+          case 3:
+            _createKnowledgeLifecycleSchema();
+            version = 4;
           default:
             throw InvalidVaultSchemaException(const []);
         }
@@ -652,6 +692,7 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
       'vault_settings',
       'knowledge_passages_fts',
       'chat_workspace_state',
+      'knowledge_pages',
     };
     final missingTables = requiredTables.difference(_userTableNames()).toList()
       ..sort();
@@ -673,6 +714,11 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
         .select('PRAGMA table_info(turns);')
         .any((row) => row['name'] == 'failure')) {
       throw const InvalidVaultSchemaException(['turn failure column']);
+    }
+    if (!_database
+        .select('PRAGMA table_info(knowledge_items);')
+        .any((row) => row['name'] == 'processing_message')) {
+      throw const InvalidVaultSchemaException(['knowledge processing columns']);
     }
   }
 
@@ -810,6 +856,20 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
       ) VALUES (1, 'manual', 0, 'immediate');
     ''');
     _createChatLifecycleSchema();
+    _createKnowledgeLifecycleSchema();
+  }
+
+  void _createKnowledgeLifecycleSchema() {
+    _database.execute('''
+      ALTER TABLE knowledge_items ADD COLUMN processing_message TEXT;
+      CREATE TABLE knowledge_pages (
+        knowledge_item_id TEXT NOT NULL REFERENCES knowledge_items(id) ON DELETE CASCADE,
+        page_number INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        ocr_confidence REAL,
+        PRIMARY KEY (knowledge_item_id, page_number)
+      );
+    ''');
   }
 
   void _createChatLifecycleSchema() {
@@ -1516,6 +1576,139 @@ final class _SqliteVaultKnowledge implements VaultKnowledge {
   final _SqliteLocalDataVault _vault;
 
   @override
+  Future<KnowledgeSource> source(String id) async {
+    _vault._ensureOpen();
+    final rows = _vault._database.select(
+      'SELECT source_bytes, extracted_text FROM knowledge_items WHERE id = ?;',
+      [id],
+    );
+    if (rows.isEmpty) throw StateError('Knowledge item is unavailable.');
+    return KnowledgeSource(
+      bytes: Uint8List.fromList(rows.single['source_bytes'] as Uint8List),
+      pages: await pages(id),
+    );
+  }
+
+  @override
+  Future<List<KnowledgePage>> pages(String id) async {
+    _vault._ensureOpen();
+    final rows = _vault._database.select(
+      'SELECT extracted_text FROM knowledge_items WHERE id = ?;',
+      [id],
+    );
+    if (rows.isEmpty) throw StateError('Knowledge item is unavailable.');
+    final pages = _vault._database.select(
+      'SELECT page_number, text, ocr_confidence FROM knowledge_pages WHERE knowledge_item_id = ? ORDER BY page_number;',
+      [id],
+    );
+    return [
+      for (final row in pages)
+        KnowledgePage(
+          number: row['page_number'] as int,
+          text: row['text'] as String,
+          ocrConfidence: (row['ocr_confidence'] as num?)?.toDouble(),
+        ),
+      if (pages.isEmpty && rows.single['extracted_text'] is String)
+        KnowledgePage(number: 1, text: rows.single['extracted_text'] as String),
+    ];
+  }
+
+  @override
+  Future<void> savePage(String id, KnowledgePage page, int totalPages) async {
+    if (page.number < 1 || page.number > totalPages) {
+      throw ArgumentError('Invalid page.');
+    }
+    _vault._transaction(() {
+      _vault._database.execute(
+        '''INSERT INTO knowledge_pages VALUES (?, ?, ?, ?)
+        ON CONFLICT(knowledge_item_id, page_number) DO UPDATE SET
+        text = excluded.text, ocr_confidence = excluded.ocr_confidence;''',
+        [id, page.number, page.text, page.ocrConfidence],
+      );
+      _vault._database.execute(
+        'UPDATE knowledge_items SET page_count = ?, updated_at = ? WHERE id = ?;',
+        [totalPages, _vault._now().toIso8601String(), id],
+      );
+    });
+  }
+
+  @override
+  Future<void> setState(
+    String id,
+    KnowledgeProcessingState state, {
+    String? message,
+    bool reset = false,
+  }) async {
+    _vault._transaction(() {
+      _vault._database.execute(
+        'UPDATE knowledge_items SET processing_state = ?, processing_message = ?, updated_at = ? WHERE id = ?;',
+        [
+          _knowledgeProcessingStateValue(state),
+          message,
+          _vault._now().toIso8601String(),
+          id,
+        ],
+      );
+      if (_vault._database.updatedRows != 1) {
+        throw StateError('Knowledge item is unavailable.');
+      }
+      if (reset) {
+        _vault._database.execute(
+          'DELETE FROM knowledge_passages_fts WHERE knowledge_item_id = ?;',
+          [id],
+        );
+        _vault._database.execute(
+          'DELETE FROM knowledge_passages WHERE knowledge_item_id = ?;',
+          [id],
+        );
+        _vault._database.execute(
+          'DELETE FROM knowledge_pages WHERE knowledge_item_id = ?;',
+          [id],
+        );
+        _vault._database.execute(
+          'DELETE FROM processing_checkpoints WHERE knowledge_item_id = ?;',
+          [id],
+        );
+        _vault._database.execute(
+          'UPDATE knowledge_items SET extracted_text = NULL, indexed_at = NULL WHERE id = ?;',
+          [id],
+        );
+      }
+    });
+  }
+
+  @override
+  Future<void> rename(String id, String title) async {
+    if (title.trim().isEmpty) throw ArgumentError('Enter a title.');
+    _vault._ensureOpen();
+    _vault._database.execute(
+      'UPDATE knowledge_items SET title = ?, updated_at = ? WHERE id = ?;',
+      [title.trim(), _vault._now().toIso8601String(), id],
+    );
+    if (_vault._database.updatedRows != 1) {
+      throw StateError('Knowledge item is unavailable.');
+    }
+  }
+
+  @override
+  Future<List<int>> lexicalRanks(String id, String query, int limit) async {
+    _vault._ensureOpen();
+    if (query.isEmpty) return [];
+    return [
+      for (final row in _vault._database.select(
+        '''
+      SELECT CAST(passage_id AS INTEGER) AS id FROM knowledge_passages_fts
+      WHERE knowledge_passages_fts MATCH ? AND knowledge_item_id = ?
+        AND EXISTS (SELECT 1 FROM knowledge_items WHERE id = ? AND processing_state = 'indexed')
+      ORDER BY bm25(knowledge_passages_fts) LIMIT ?;
+    ''',
+        [query, id, id, limit],
+      ))
+        row['id'] as int,
+    ];
+  }
+
+  @override
   Future<KnowledgeItemRecord> beginProcessing({
     required String title,
     required KnowledgeSourceType sourceType,
@@ -1586,6 +1779,14 @@ final class _SqliteVaultKnowledge implements VaultKnowledge {
     _vault._ensureOpen();
     _vault._database.execute('BEGIN IMMEDIATE;');
     try {
+      _vault._database.execute(
+        'DELETE FROM knowledge_passages_fts WHERE knowledge_item_id = ?;',
+        [knowledgeItemId],
+      );
+      _vault._database.execute(
+        'DELETE FROM knowledge_passages WHERE knowledge_item_id = ?;',
+        [knowledgeItemId],
+      );
       for (final passage in passages) {
         _vault._database.execute(
           '''
@@ -1662,6 +1863,8 @@ final class _SqliteVaultKnowledge implements VaultKnowledge {
           knowledge_items.created_at,
           knowledge_items.updated_at,
           knowledge_items.indexed_at,
+          length(knowledge_items.source_bytes) AS source_size,
+          knowledge_items.processing_message,
           processing_checkpoints.stage AS checkpoint_stage,
           processing_checkpoints.completed_units,
           processing_checkpoints.total_units,
@@ -1686,6 +1889,8 @@ final class _SqliteVaultKnowledge implements VaultKnowledge {
       sourceName: row['source_name'] as String?,
       pageCount: row['page_count'] as int,
       fingerprint: row['fingerprint'] as String,
+      sourceSize: row['source_size'] as int,
+      processingMessage: row['processing_message'] as String?,
       processingState: _knowledgeProcessingStateFromValue(
         row['processing_state'] as String,
       ),
@@ -1713,7 +1918,7 @@ final class _SqliteVaultKnowledge implements VaultKnowledge {
     final rows = _vault._database.select('''
       SELECT id
       FROM knowledge_items
-      ORDER BY updated_at DESC, id DESC;
+      ORDER BY created_at DESC, id DESC;
     ''');
     final items = <KnowledgeItemRecord>[];
     for (final row in rows) {
@@ -1759,6 +1964,7 @@ final class _SqliteVaultKnowledge implements VaultKnowledge {
           knowledge_passages.heading,
           knowledge_passages.page,
           knowledge_passages.token_count
+          , knowledge_passages.vector, knowledge_passages.vector_scale
         FROM knowledge_passages
         JOIN knowledge_items
           ON knowledge_items.id = knowledge_passages.knowledge_item_id
@@ -1781,6 +1987,8 @@ final class _SqliteVaultKnowledge implements VaultKnowledge {
           heading: row['heading'] as String,
           page: row['page'] as int?,
           tokenCount: row['token_count'] as int,
+          vector: row['vector'] as Uint8List,
+          vectorScale: (row['vector_scale'] as num).toDouble(),
         ),
     ];
   }

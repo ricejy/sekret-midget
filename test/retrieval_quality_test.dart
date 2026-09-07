@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sekret_midget/core/knowledge/knowledge_base.dart';
+import 'package:sekret_midget/core/storage/local_data_vault.dart';
 import 'package:sekret_midget/core/library/document_library.dart';
 import 'package:sekret_midget/core/platform/embedder.dart';
 import 'package:sekret_midget/core/platform/llm_backend.dart';
@@ -9,6 +11,52 @@ import 'package:sekret_midget/evaluation/retrieval_quality.dart';
 import 'package:sekret_midget/evaluation/synthetic_retrieval_corpus.dart';
 
 void main() {
+  test(
+    'v2 Knowledge Base retains all 30 hybrid and dense-only corpus hits',
+    () async {
+      final vault = await openLocalDataVault(databasePath: ':memory:');
+      final base = await KnowledgeBase.open(
+        vault: vault,
+        embedder: _SyntheticLabelEmbedder(),
+        tokenCounter: const FakeTokenCounter(),
+      );
+      try {
+        var hits = 0;
+        for (final document in syntheticRetrievalCorpus) {
+          final result = await base.importText(
+            title: document.title,
+            text: document.text,
+          );
+          expect(
+            (await base.process(result.item.id)).processingState,
+            KnowledgeProcessingState.indexed,
+          );
+          for (final question in document.questions) {
+            for (final mode in RetrievalMode.values) {
+              final evidence = await base.retrieve(
+                itemId: result.item.id,
+                question: question.question,
+                mode: mode,
+              );
+              expect(
+                evidence.any(
+                  (passage) =>
+                      question.relevantHeadings.contains(passage.heading),
+                ),
+                isTrue,
+                reason: '${question.id} in ${mode.name}',
+              );
+            }
+            hits++;
+          }
+        }
+        expect(hits, 30);
+      } finally {
+        await base.dispose();
+        await vault.close();
+      }
+    },
+  );
   test(
     'the committed corpus is fictional, labeled, and meaningfully grouped',
     () {

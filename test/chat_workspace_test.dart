@@ -301,6 +301,8 @@ void main() {
       ALTER TABLE chats DROP COLUMN manually_titled;
       ALTER TABLE chats DROP COLUMN deletion_deadline;
       ALTER TABLE turns DROP COLUMN failure;
+      DROP TABLE knowledge_pages;
+      ALTER TABLE knowledge_items DROP COLUMN processing_message;
       PRAGMA user_version = 1;
     ''');
       database.close();

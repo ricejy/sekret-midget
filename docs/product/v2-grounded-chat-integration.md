@@ -110,3 +110,19 @@ Portable adapter tests verify exact Dart/Swift instruction parity and explicit
 and the existing cancellation, backgrounding, and protection regressions with
 deterministic runtimes. These checks do not substitute for real Apple-model
 quality testing through the v2 UI in #25/#29.
+
+On the target iPhone, direct XCTest startup with a debug Flutter host failed
+before tests with `Could not call ptrace(PT_TRACE_ME): Operation not permitted`.
+Use a release Flutter host for native XCTest; retain testability for the Swift
+test bundle and override the temporary Flutter integration-test entry point:
+
+```sh
+xcodebuild test -workspace ios/Runner.xcworkspace -scheme Runner \
+  -configuration Release -destination 'platform=iOS,id=<usb-device-id>' \
+  ENABLE_TESTABILITY=YES FLUTTER_BUILD_MODE=release FLUTTER_TARGET=lib/main.dart \
+  -only-testing:RunnerTests
+```
+
+Verified on 2026-09-07: static analysis clean, 146 portable tests passed,
+13 grounded integration scenarios passed on iPhone 15 Pro Max / iOS 26.6.1,
+and all 19 native XCTest cases passed on that same device (no skips).

@@ -14,6 +14,16 @@ enum TurnOutcome {
   insufficientEvidence,
 }
 
+enum TurnFailure {
+  deviceNotEligible,
+  appleIntelligenceNotEnabled,
+  modelNotReady,
+  unavailable,
+  contextOverflow,
+  guardrailViolation,
+  streamFailure,
+}
+
 enum RetentionPolicy { manual, thirtyDays, ninetyDays }
 
 enum AppLockDelay { immediate, oneMinute, fifteenMinutes }
@@ -28,7 +38,7 @@ enum KnowledgeProcessingState {
   needsReindexing,
 }
 
-const localDataVaultSchemaVersion = 2;
+const localDataVaultSchemaVersion = 3;
 
 final class VaultWriteException implements Exception {
   const VaultWriteException(this.cause);
@@ -265,6 +275,7 @@ final class TurnRecord {
     required this.outcome,
     required this.createdAt,
     required this.provenance,
+    this.failure,
   });
 
   final String id;
@@ -275,6 +286,11 @@ final class TurnRecord {
   final TurnOutcome outcome;
   final DateTime createdAt;
   final TurnProvenance provenance;
+  final TurnFailure? failure;
+
+  String get answerLabel => provenance.mode == ChatMode.general
+      ? 'General answer'
+      : 'Based on selected sources';
 }
 
 final class ContextSummaryRecord {
@@ -345,7 +361,12 @@ abstract interface class VaultChats {
     RetentionPolicy policy,
     List<ChatRecord> candidates,
   );
-  Future<void> finishTurn(String turnId, String text, TurnOutcome outcome);
+  Future<void> finishTurn(
+    String turnId,
+    String text,
+    TurnOutcome outcome, {
+    TurnFailure? failure,
+  });
   Future<void> recoverInterruptedTurns();
   Future<ChatRecord> createChat();
 
@@ -599,6 +620,9 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
           case 1:
             _createChatLifecycleSchema();
             version = 2;
+          case 2:
+            _database.execute('ALTER TABLE turns ADD COLUMN failure TEXT;');
+            version = 3;
           default:
             throw InvalidVaultSchemaException(const []);
         }
@@ -644,6 +668,11 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
       'deletion_deadline',
     })) {
       throw const InvalidVaultSchemaException(['chats lifecycle columns']);
+    }
+    if (!_database
+        .select('PRAGMA table_info(turns);')
+        .any((row) => row['name'] == 'failure')) {
+      throw const InvalidVaultSchemaException(['turn failure column']);
     }
   }
 
@@ -712,6 +741,7 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
         user_text TEXT NOT NULL,
         assistant_text TEXT NOT NULL,
         outcome TEXT NOT NULL,
+        failure TEXT,
         created_at TEXT NOT NULL,
         UNIQUE (chat_id, ordinal)
       );
@@ -1010,8 +1040,12 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
   Future<void> finishTurn(
     String turnId,
     String text,
-    TurnOutcome outcome,
-  ) async {
+    TurnOutcome outcome, {
+    TurnFailure? failure,
+  }) async {
+    if (failure != null && outcome != TurnOutcome.failed) {
+      throw ArgumentError('Only failed turns may have a failure reason.');
+    }
     _transaction(() {
       final rows = _database.select(
         """SELECT chat_id FROM turns WHERE id = ? AND outcome = 'generating'
@@ -1020,8 +1054,8 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
       );
       if (rows.isEmpty) throw StateError('Turn is no longer generating.');
       _database.execute(
-        'UPDATE turns SET assistant_text = ?, outcome = ? WHERE id = ?;',
-        [text, _turnOutcomeValue(outcome), turnId],
+        'UPDATE turns SET assistant_text = ?, outcome = ?, failure = ? WHERE id = ?;',
+        [text, _turnOutcomeValue(outcome), failure?.name, turnId],
       );
       _database.execute(
         'UPDATE chats SET updated_at = ?, revision = revision + 1 WHERE id = ?;',
@@ -1270,6 +1304,7 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
           turns.user_text,
           turns.assistant_text,
           turns.outcome,
+          turns.failure,
           turns.created_at,
           turn_provenance.mode,
           turn_provenance.model_identifier,
@@ -1390,6 +1425,9 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
       userText: row['user_text'] as String,
       assistantText: row['assistant_text'] as String,
       outcome: _turnOutcomeFromValue(row['outcome'] as String),
+      failure: row['failure'] == null
+          ? null
+          : TurnFailure.values.byName(row['failure'] as String),
       createdAt: DateTime.parse(row['created_at'] as String),
       provenance: TurnProvenance(
         mode: _chatModeFromValue(row['mode'] as String),

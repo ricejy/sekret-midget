@@ -300,6 +300,7 @@ void main() {
       ALTER TABLE chats DROP COLUMN revision;
       ALTER TABLE chats DROP COLUMN manually_titled;
       ALTER TABLE chats DROP COLUMN deletion_deadline;
+      ALTER TABLE turns DROP COLUMN failure;
       PRAGMA user_version = 1;
     ''');
       database.close();

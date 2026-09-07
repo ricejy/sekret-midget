@@ -4,7 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sekret_midget/core/chat/chat_workspace.dart';
-import 'package:sekret_midget/core/chat/general_chat_engine.dart';
+import 'package:sekret_midget/core/chat/chat_engine.dart';
 import 'package:sekret_midget/core/platform/llm_backend.dart';
 import 'package:sekret_midget/core/platform/token_counter.dart';
 import 'package:sekret_midget/core/storage/local_data_vault.dart';
@@ -14,8 +14,8 @@ void main() {
   late LocalDataVault vault;
   late ChatWorkspace workspace;
   late FakeGeneralModel model;
-  late GeneralChatEngine engine;
-  GeneralChatEngine makeEngine() => GeneralChatEngine(
+  late ChatEngine engine;
+  ChatEngine makeEngine() => ChatEngine(
     workspace: workspace,
     backend: model,
     contextProbe: model,
@@ -338,7 +338,8 @@ void main() {
         final old = sqlite3.open(path);
         old.execute(
           'ALTER TABLE turns DROP COLUMN failure; DROP TABLE knowledge_pages; '
-          'ALTER TABLE knowledge_items DROP COLUMN processing_message; PRAGMA user_version = 2;',
+          'ALTER TABLE knowledge_items DROP COLUMN processing_message; '
+          'ALTER TABLE turn_provenance DROP COLUMN evidence_captured; PRAGMA user_version = 2;',
         );
         old.close();
         vault = await openLocalDataVault(databasePath: path);

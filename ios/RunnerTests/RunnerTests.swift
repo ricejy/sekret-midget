@@ -248,14 +248,14 @@ final class RunnerTests: XCTestCase {
   func testGeneralAndKnowledgeBaseUseDistinctRuntimeModes() async throws {
     let runtime = FakeFoundationModelRuntime(status: .available, snapshots: ["Answer"])
     let service = AppleFoundationModelService(runtime: runtime)
-    for mode in [FoundationModelMode.general, .knowledgeBase] {
+    for mode in [FoundationModelMode.general, .knowledgeBase, .groundedChat] {
       var text = ""
       for try await snapshot in try service.responseStream(prompt: "Question", mode: mode) {
         text = snapshot
       }
       XCTAssertEqual(text, "Answer")
     }
-    XCTAssertEqual(runtime.requestedModes, [.general, .knowledgeBase])
+    XCTAssertEqual(runtime.requestedModes, [.general, .knowledgeBase, .groundedChat])
   }
 
   func testGeneralRuntimeStreamFailureIsNotCompletion() async throws {

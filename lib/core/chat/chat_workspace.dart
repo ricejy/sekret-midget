@@ -218,6 +218,75 @@ final class ChatWorkspace {
   Future<void> deleteFromTurn(String chatId, String turnId) =>
       _run(() => _vault.chats.deleteFromTurn(chatId, turnId));
 
+  Future<TurnRecord> beginGroundedTurn({
+    required String chatId,
+    required String userText,
+    required ModelSnapshot model,
+    String? regenerateTurnId,
+  }) => _run(() async {
+    final chat = await _findChat(chatId);
+    var text = userText.trim();
+    var sources = chat.selectedSourceIds;
+    if (regenerateTurnId != null) {
+      final original = (await _vault.chats.listTurns(
+        chatId,
+      )).firstWhere((turn) => turn.id == regenerateTurnId);
+      if (original.provenance.mode != ChatMode.knowledgeBase ||
+          original.outcome == TurnOutcome.generating) {
+        throw StateError(
+          'Only terminal grounded turns can be regenerated here.',
+        );
+      }
+      sources = original.provenance.sourceScope
+          .map((source) => source.id)
+          .toList();
+      text = original.userText;
+    } else if (chat.mode != ChatMode.knowledgeBase) {
+      throw StateError('Choose Knowledge Base mode before sending.');
+    }
+    if (text.isEmpty) throw ArgumentError('Enter a message.');
+    if (sources.isEmpty) {
+      throw StateError('Select at least one indexed source.');
+    }
+    for (final id in sources) {
+      if ((await _vault.knowledge.get(id)).processingState !=
+          KnowledgeProcessingState.indexed) {
+        throw StateError(
+          'All original sources must be indexed before sending.',
+        );
+      }
+    }
+    return _vault.chats.appendTurn(
+      chatId: chatId,
+      userText: text,
+      assistantText: '',
+      outcome: TurnOutcome.generating,
+      mode: ChatMode.knowledgeBase,
+      sourceScopeIds: sources,
+      evidencePassageIds: const [],
+      citationEvidenceIndexes: const [],
+      model: model,
+      deferEvidence: true,
+    );
+  });
+
+  Future<TurnRecord> captureEvidence(
+    String chatId,
+    String turnId,
+    List<int> passageIds,
+  ) {
+    final ids = List<int>.of(passageIds);
+    return _run(() async {
+      final turn = (await _vault.chats.listTurns(
+        chatId,
+      )).firstWhere((turn) => turn.id == turnId);
+      await _vault.chats.captureEvidence(turn.id, ids);
+      return (await _vault.chats.listTurns(
+        chatId,
+      )).firstWhere((turn) => turn.id == turnId);
+    });
+  }
+
   Future<void> deleteChat(String chatId) => _run(() async {
     await _vault.chats.stageDeletion(chatId, _clock().toUtc().add(undoWindow));
     if (_currentChatId == chatId) {

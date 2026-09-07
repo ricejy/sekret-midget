@@ -12,6 +12,7 @@ void main() {
   late DateTime now;
   late LocalDataVault vault;
   late ChatWorkspace workspace;
+  final temporaryDirectories = <Directory>[];
   setUp(() async {
     now = DateTime.utc(2026, 1, 1);
     vault = await openLocalDataVault(
@@ -23,6 +24,10 @@ void main() {
   tearDown(() async {
     await workspace.dispose();
     await vault.close();
+    for (final directory in temporaryDirectories) {
+      await directory.delete(recursive: true);
+    }
+    temporaryDirectories.clear();
   });
 
   Future<TurnRecord> say(String chatId, String question, String answer) async {
@@ -235,7 +240,7 @@ void main() {
       final directory = await Directory.systemTemp.createTemp(
         'sekret-chat-restart-',
       );
-      addTearDown(() => directory.delete(recursive: true));
+      temporaryDirectories.add(directory);
       final path = '${directory.path}/vault.sqlite3';
       await workspace.dispose();
       await vault.close();
@@ -281,7 +286,7 @@ void main() {
       final directory = await Directory.systemTemp.createTemp(
         'sekret-chat-migration-',
       );
-      addTearDown(() => directory.delete(recursive: true));
+      temporaryDirectories.add(directory);
       final path = '${directory.path}/vault.sqlite3';
       final original = await openLocalDataVault(databasePath: path);
       final chat = await original.chats.createChat();
@@ -395,7 +400,7 @@ void main() {
       final directory = await Directory.systemTemp.createTemp(
         'sekret-chat-context-',
       );
-      addTearDown(() => directory.delete(recursive: true));
+      temporaryDirectories.add(directory);
       final path = '${directory.path}/vault.sqlite3';
       await workspace.dispose();
       await vault.close();

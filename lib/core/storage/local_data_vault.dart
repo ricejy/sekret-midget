@@ -6,6 +6,7 @@ import 'package:sqlite3/sqlite3.dart';
 enum ChatMode { general, knowledgeBase }
 
 enum TurnOutcome {
+  generating,
   completed,
   stopped,
   interrupted,
@@ -27,7 +28,7 @@ enum KnowledgeProcessingState {
   needsReindexing,
 }
 
-const localDataVaultSchemaVersion = 1;
+const localDataVaultSchemaVersion = 2;
 
 final class VaultWriteException implements Exception {
   const VaultWriteException(this.cause);
@@ -84,6 +85,7 @@ final class ChatRecord {
     required this.updatedAt,
     required this.mode,
     required this.selectedSourceIds,
+    this.revision = 0,
   });
 
   final String id;
@@ -92,6 +94,7 @@ final class ChatRecord {
   final DateTime updatedAt;
   final ChatMode mode;
   final List<String> selectedSourceIds;
+  final int revision;
 }
 
 final class ProcessingCheckpoint {
@@ -329,6 +332,21 @@ final class StorageUsage {
 }
 
 abstract interface class VaultChats {
+  Future<String?> currentChatId();
+  Future<void> selectChat(String? id);
+  Future<void> renameChat(String chatId, String title);
+  Future<void> deleteFromTurn(String chatId, String turnId);
+  Future<void> stageDeletion(String chatId, DateTime deadline);
+  Future<bool> undoDeletion(String chatId);
+  Future<void> reap();
+  Future<DateTime?> nextDeletionDeadline();
+  Future<List<ChatRecord>> retentionCandidates(RetentionPolicy policy);
+  Future<void> applyRetention(
+    RetentionPolicy policy,
+    List<ChatRecord> candidates,
+  );
+  Future<void> finishTurn(String turnId, String text, TurnOutcome outcome);
+  Future<void> recoverInterruptedTurns();
   Future<ChatRecord> createChat();
 
   Future<List<ChatRecord>> listChats();
@@ -423,11 +441,12 @@ abstract interface class LocalDataVault {
 
 Future<LocalDataVault> openLocalDataVault({
   required String databasePath,
+  DateTime Function()? clock,
 }) async {
   final database = databasePath == ':memory:'
       ? sqlite3.openInMemory()
       : sqlite3.open(databasePath);
-  final vault = _SqliteLocalDataVault(database);
+  final vault = _SqliteLocalDataVault(database, clock ?? DateTime.now);
   try {
     vault._openSchema();
     return vault;
@@ -438,7 +457,10 @@ Future<LocalDataVault> openLocalDataVault({
 }
 
 final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
-  _SqliteLocalDataVault(this._database);
+  _SqliteLocalDataVault(this._database, this._clock);
+
+  final DateTime Function() _clock;
+  DateTime _now() => _clock().toUtc();
 
   static var _idSequence = 0;
 
@@ -547,6 +569,7 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
         _database.execute(
           'PRAGMA user_version = $localDataVaultSchemaVersion;',
         );
+        _validateSchema();
         _database.execute('COMMIT;');
       } on Object {
         _database.execute('ROLLBACK;');
@@ -573,11 +596,15 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
       var version = foundVersion;
       while (version < localDataVaultSchemaVersion) {
         switch (version) {
+          case 1:
+            _createChatLifecycleSchema();
+            version = 2;
           default:
             throw InvalidVaultSchemaException(const []);
         }
       }
       _database.execute('PRAGMA user_version = $version;');
+      _validateSchema();
       _database.execute('COMMIT;');
     } on Object {
       _database.execute('ROLLBACK;');
@@ -600,11 +627,23 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
       'context_summaries',
       'vault_settings',
       'knowledge_passages_fts',
+      'chat_workspace_state',
     };
     final missingTables = requiredTables.difference(_userTableNames()).toList()
       ..sort();
     if (missingTables.isNotEmpty) {
       throw InvalidVaultSchemaException(missingTables);
+    }
+    final columns = {
+      for (final row in _database.select('PRAGMA table_info(chats);'))
+        row['name'] as String,
+    };
+    if (!columns.containsAll({
+      'revision',
+      'manually_titled',
+      'deletion_deadline',
+    })) {
+      throw const InvalidVaultSchemaException(['chats lifecycle columns']);
     }
   }
 
@@ -740,12 +779,29 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
         singleton_id, retention_policy, biometric_lock_enabled, lock_delay
       ) VALUES (1, 'manual', 0, 'immediate');
     ''');
+    _createChatLifecycleSchema();
+  }
+
+  void _createChatLifecycleSchema() {
+    _database.execute('''
+      ALTER TABLE chats ADD COLUMN manually_titled INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE chats ADD COLUMN deletion_deadline TEXT;
+      ALTER TABLE chats ADD COLUMN revision INTEGER NOT NULL DEFAULT 0;
+      CREATE TABLE chat_workspace_state (
+        singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+        current_chat_id TEXT REFERENCES chats(id) ON DELETE SET NULL
+      );
+      INSERT INTO chat_workspace_state VALUES (1, NULL);
+      CREATE UNIQUE INDEX one_generating_turn ON turns(outcome)
+        WHERE outcome = 'generating';
+      CREATE INDEX chat_activity ON chats(updated_at);
+    ''');
   }
 
   @override
   Future<ChatRecord> createChat() async {
     _ensureOpen();
-    final now = DateTime.now().toUtc();
+    final now = _now();
     final chat = ChatRecord(
       id: '${now.microsecondsSinceEpoch.toRadixString(36)}-${_idSequence++}',
       title: 'New Chat',
@@ -770,12 +826,225 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
     return chat;
   }
 
+  void _requireVisibleChat(String id) {
+    _ensureOpen();
+    if (_database.select(
+      'SELECT 1 FROM chats WHERE id = ? AND deletion_deadline IS NULL;',
+      [id],
+    ).isEmpty) {
+      throw StateError('Chat is unavailable.');
+    }
+  }
+
+  @override
+  Future<String?> currentChatId() async {
+    _ensureOpen();
+    return _database
+            .select('SELECT current_chat_id FROM chat_workspace_state;')
+            .single['current_chat_id']
+        as String?;
+  }
+
+  @override
+  Future<void> selectChat(String? id) async {
+    _ensureOpen();
+    if (id != null) _requireVisibleChat(id);
+    _database.execute('UPDATE chat_workspace_state SET current_chat_id = ?;', [
+      id,
+    ]);
+  }
+
+  T _transaction<T>(T Function() action) {
+    _ensureOpen();
+    _database.execute('BEGIN IMMEDIATE;');
+    try {
+      final result = action();
+      _database.execute('COMMIT;');
+      return result;
+    } on Object {
+      _database.execute('ROLLBACK;');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> renameChat(String chatId, String title) async {
+    _requireVisibleChat(chatId);
+    final clean = title.trim();
+    if (clean.isEmpty) throw ArgumentError('Enter a chat title.');
+    _database.execute(
+      'UPDATE chats SET title = ?, manually_titled = 1, updated_at = ?, revision = revision + 1 WHERE id = ?;',
+      [clean, _now().toIso8601String(), chatId],
+    );
+  }
+
+  @override
+  Future<void> deleteFromTurn(String chatId, String turnId) async {
+    _requireVisibleChat(chatId);
+    _transaction(() {
+      final rows = _database.select(
+        'SELECT ordinal FROM turns WHERE id = ? AND chat_id = ?;',
+        [turnId, chatId],
+      );
+      if (rows.isEmpty) throw StateError('Turn is unavailable.');
+      final ordinal = rows.single['ordinal'] as int;
+      _database.execute(
+        'DELETE FROM turns WHERE chat_id = ? AND ordinal >= ?;',
+        [chatId, ordinal],
+      );
+      // A summary that contains removed turns must never reach the next prompt.
+      _database.execute(
+        'DELETE FROM context_summaries WHERE chat_id = ? AND summarized_through_ordinal >= ?;',
+        [chatId, ordinal],
+      );
+      _database.execute(
+        'UPDATE chats SET updated_at = ?, revision = revision + 1 WHERE id = ?;',
+        [_now().toIso8601String(), chatId],
+      );
+    });
+  }
+
+  @override
+  Future<void> stageDeletion(String chatId, DateTime deadline) async {
+    _requireVisibleChat(chatId);
+    _transaction(() {
+      _database.execute(
+        "UPDATE turns SET outcome = 'interrupted' WHERE chat_id = ? AND outcome = 'generating';",
+        [chatId],
+      );
+      _database.execute(
+        'UPDATE chats SET deletion_deadline = ?, revision = revision + 1 WHERE id = ?;',
+        [deadline.toUtc().toIso8601String(), chatId],
+      );
+    });
+  }
+
+  @override
+  Future<bool> undoDeletion(String chatId) async {
+    _ensureOpen();
+    _database.execute(
+      'UPDATE chats SET deletion_deadline = NULL, updated_at = ?, revision = revision + 1 WHERE id = ? AND deletion_deadline > ?;',
+      [_now().toIso8601String(), chatId, _now().toIso8601String()],
+    );
+    return _database.updatedRows == 1;
+  }
+
+  DateTime? _cutoff(RetentionPolicy policy) => switch (policy) {
+    RetentionPolicy.manual => null,
+    RetentionPolicy.thirtyDays => _now().subtract(const Duration(days: 30)),
+    RetentionPolicy.ninetyDays => _now().subtract(const Duration(days: 90)),
+  };
+
+  @override
+  Future<List<ChatRecord>> retentionCandidates(RetentionPolicy policy) async {
+    _ensureOpen();
+    final cutoff = _cutoff(policy);
+    if (cutoff == null) return [];
+    return [
+      for (final row in _database.select(
+        """SELECT * FROM chats WHERE deletion_deadline IS NULL AND updated_at <= ?
+           AND NOT EXISTS (SELECT 1 FROM turns WHERE chat_id = chats.id AND outcome = 'generating');""",
+        [cutoff.toIso8601String()],
+      ))
+        _chatFromRow(row),
+    ];
+  }
+
+  @override
+  Future<void> applyRetention(
+    RetentionPolicy policy,
+    List<ChatRecord> candidates,
+  ) async {
+    _transaction(() {
+      _database.execute(
+        'UPDATE vault_settings SET retention_policy = ? WHERE singleton_id = 1;',
+        [_retentionPolicyValue(policy)],
+      );
+      final cutoff = _cutoff(policy);
+      if (cutoff == null) return;
+      for (final chat in candidates) {
+        // Confirmation applies only to previewed chats with unchanged activity.
+        _database.execute(
+          """DELETE FROM chats WHERE id = ? AND revision = ? AND updated_at <= ?
+             AND deletion_deadline IS NULL
+             AND NOT EXISTS (SELECT 1 FROM turns WHERE chat_id = chats.id AND outcome = 'generating');""",
+          [chat.id, chat.revision, cutoff.toIso8601String()],
+        );
+      }
+    });
+  }
+
+  @override
+  Future<void> reap() async {
+    _transaction(() {
+      _database.execute('DELETE FROM chats WHERE deletion_deadline <= ?;', [
+        _now().toIso8601String(),
+      ]);
+      final policy = _retentionPolicyFromValue(
+        _database
+                .select('SELECT retention_policy FROM vault_settings;')
+                .single['retention_policy']
+            as String,
+      );
+      final cutoff = _cutoff(policy);
+      if (cutoff != null) {
+        _database.execute(
+          """DELETE FROM chats WHERE deletion_deadline IS NULL AND updated_at <= ?
+             AND NOT EXISTS (SELECT 1 FROM turns WHERE chat_id = chats.id AND outcome = 'generating');""",
+          [cutoff.toIso8601String()],
+        );
+      }
+    });
+  }
+
+  @override
+  Future<DateTime?> nextDeletionDeadline() async {
+    _ensureOpen();
+    final value = _database
+        .select('SELECT MIN(deletion_deadline) AS deadline FROM chats;')
+        .single['deadline'];
+    return value is String ? DateTime.parse(value) : null;
+  }
+
+  @override
+  Future<void> finishTurn(
+    String turnId,
+    String text,
+    TurnOutcome outcome,
+  ) async {
+    _transaction(() {
+      final rows = _database.select(
+        """SELECT chat_id FROM turns WHERE id = ? AND outcome = 'generating'
+           AND EXISTS (SELECT 1 FROM chats WHERE chats.id = chat_id AND deletion_deadline IS NULL);""",
+        [turnId],
+      );
+      if (rows.isEmpty) throw StateError('Turn is no longer generating.');
+      _database.execute(
+        'UPDATE turns SET assistant_text = ?, outcome = ? WHERE id = ?;',
+        [text, _turnOutcomeValue(outcome), turnId],
+      );
+      _database.execute(
+        'UPDATE chats SET updated_at = ?, revision = revision + 1 WHERE id = ?;',
+        [_now().toIso8601String(), rows.single['chat_id']],
+      );
+    });
+  }
+
+  @override
+  Future<void> recoverInterruptedTurns() async {
+    _ensureOpen();
+    _database.execute(
+      "UPDATE turns SET outcome = 'interrupted' WHERE outcome = 'generating';",
+    );
+  }
+
   @override
   Future<List<ChatRecord>> listChats() async {
     _ensureOpen();
     final rows = _database.select('''
-      SELECT id, title, mode, created_at, updated_at
+      SELECT id, title, mode, created_at, updated_at, revision
       FROM chats
+      WHERE deletion_deadline IS NULL
       ORDER BY updated_at DESC, id DESC;
     ''');
     return [for (final row in rows) _chatFromRow(row)];
@@ -788,6 +1057,7 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
     required List<String> selectedSourceIds,
   }) async {
     _ensureOpen();
+    _requireVisibleChat(chatId);
     _database.execute('BEGIN IMMEDIATE;');
     try {
       _database.execute(
@@ -805,12 +1075,8 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
         );
       }
       _database.execute(
-        'UPDATE chats SET mode = ?, updated_at = ? WHERE id = ?;',
-        [
-          _chatModeValue(mode),
-          DateTime.now().toUtc().toIso8601String(),
-          chatId,
-        ],
+        'UPDATE chats SET mode = ?, updated_at = ?, revision = revision + 1 WHERE id = ?;',
+        [_chatModeValue(mode), _now().toIso8601String(), chatId],
       );
       if (_database.updatedRows != 1) {
         throw StateError('Chat not found: $chatId');
@@ -835,7 +1101,8 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
     required ModelSnapshot model,
   }) async {
     _ensureOpen();
-    final now = DateTime.now().toUtc();
+    _requireVisibleChat(chatId);
+    final now = _now();
     final turnId =
         '${now.microsecondsSinceEpoch.toRadixString(36)}-${_idSequence++}';
     _database.execute('BEGIN IMMEDIATE;');
@@ -851,6 +1118,14 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
           )
           .single;
       final ordinal = ordinalRow['next_ordinal'] as int;
+      if (ordinal == 0) {
+        final compact = userText.trim().replaceAll(RegExp(r'\s+'), ' ');
+        final title = String.fromCharCodes(compact.runes.take(60));
+        _database.execute(
+          'UPDATE chats SET title = ? WHERE id = ? AND manually_titled = 0;',
+          [title.isEmpty ? 'New Chat' : title, chatId],
+        );
+      }
       _database.execute(
         '''
           INSERT INTO turns (
@@ -970,10 +1245,10 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
           [turnId, evidenceIds[evidenceIndex], displayOrder],
         );
       }
-      _database.execute('UPDATE chats SET updated_at = ? WHERE id = ?;', [
-        now.toIso8601String(),
-        chatId,
-      ]);
+      _database.execute(
+        'UPDATE chats SET updated_at = ?, revision = revision + 1 WHERE id = ?;',
+        [now.toIso8601String(), chatId],
+      );
       _database.execute('COMMIT;');
     } on Object catch (error) {
       _database.execute('ROLLBACK;');
@@ -985,6 +1260,7 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
   @override
   Future<List<TurnRecord>> listTurns(String chatId) async {
     _ensureOpen();
+    _requireVisibleChat(chatId);
     final turnRows = _database.select(
       '''
         SELECT
@@ -1172,6 +1448,7 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
       createdAt: DateTime.parse(row['created_at'] as String),
       updatedAt: DateTime.parse(row['updated_at'] as String),
       mode: _chatModeFromValue(row['mode'] as String),
+      revision: row['revision'] as int,
       selectedSourceIds: [
         for (final selected in selectedRows)
           selected['knowledge_item_id'] as String,
@@ -1526,6 +1803,7 @@ ChatMode _chatModeFromValue(String value) => switch (value) {
 };
 
 String _turnOutcomeValue(TurnOutcome outcome) => switch (outcome) {
+  TurnOutcome.generating => 'generating',
   TurnOutcome.completed => 'completed',
   TurnOutcome.stopped => 'stopped',
   TurnOutcome.interrupted => 'interrupted',
@@ -1534,6 +1812,7 @@ String _turnOutcomeValue(TurnOutcome outcome) => switch (outcome) {
 };
 
 TurnOutcome _turnOutcomeFromValue(String value) => switch (value) {
+  'generating' => TurnOutcome.generating,
   'stopped' => TurnOutcome.stopped,
   'interrupted' => TurnOutcome.interrupted,
   'failed' => TurnOutcome.failed,

@@ -2,6 +2,7 @@
 
 - **Status:** Confirmed product scope
 - **Confirmed:** 2026-09-07
+- **UI direction selected:** 2026-09-07 — Variant A, Native Focus
 - **Production implementation:** Not started
 
 ## Objective
@@ -227,6 +228,8 @@ Existing v1 local documents do not require migration. The owner's development de
 When generation is unavailable, users may still browse history, search and preview knowledge, import or index where the remaining native capabilities permit it, change settings, and delete data. The composer is disabled with a specific explanation and appropriate recovery action for unsupported device, disabled Apple Intelligence, or model assets not ready.
 
 ## Visual language
+
+The approved interaction hierarchy is **Variant A — Native Focus** from the throwaway v2 prototype. Production should retain its familiar iOS structure: a quiet navigation bar, open transcript, compact mode and source controls near the composer, and conventional tab-based Knowledge Base and Settings surfaces. The persistent context shelf from Variant B and the heavier card-grouped workspace from Variant C are not part of the selected direction.
 
 - Cupertino-first tab shell, navigation bars, sheets, menus, and interaction conventions.
 - Deep navy text, soft off-white surfaces, restrained blue actions, amber warnings, and sparing green success states.

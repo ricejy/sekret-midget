@@ -15,6 +15,7 @@ import 'core/platform/pdfrx_pdf_text_extractor.dart';
 import 'demo/fake_native_capabilities.dart';
 import 'evaluation/foundation_models_evaluation_app.dart';
 import 'evaluation/retrieval_quality_app.dart';
+import 'ui/sekret_chat_app.dart';
 
 const _runRetrievalQualityEvaluation = bool.fromEnvironment(
   'RETRIEVAL_QUALITY_EVALUATION',
@@ -40,6 +41,10 @@ void main() {
         tokenCounterImplementation: 'Deterministic whitespace counter',
       ),
     );
+    return;
+  }
+  if (const bool.fromEnvironment('SEKRET_V2')) {
+    runApp(const SekretChatApp(openResources: openChatApp));
     return;
   }
   runApp(SekretMidgetApp(documentLibraryFuture: _openPersistentLibrary()));

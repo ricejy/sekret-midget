@@ -8,13 +8,16 @@ environment:
   flutter: 3.44.9
 
 dependencies:
+  cupertino_icons: 1.0.9
   crypto: ^3.0.7
   file_selector: 1.1.0
   flutter:
     sdk: flutter
+  markdown: 7.3.1
   path_provider: ^2.1.6
   pdfrx: 2.4.8
   sqlite3: ^3.5.0
+  url_launcher: 6.3.2
 
 dev_dependencies:
   integration_test:

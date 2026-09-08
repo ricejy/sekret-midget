@@ -106,6 +106,11 @@ final class ChatWorkspace {
   Future<List<TurnRecord>> transcript(String chatId) =>
       _run(() => _vault.chats.listTurns(chatId), notify: false);
 
+  Future<bool> hasContextSummary(String chatId) => _run(
+    () async => await _vault.chats.getContextSummary(chatId) != null,
+    notify: false,
+  );
+
   Future<void> rename(String chatId, String title) =>
       _run(() => _vault.chats.renameChat(chatId, title));
 

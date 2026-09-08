@@ -1,22 +1,24 @@
 # General chat engine integration
 
-Issue #22 adds `GeneralChatEngine`, used alongside the app-lifetime
+Issue #22 introduced the General engine; #24 renames and extends it as
+`ChatEngine`, used alongside the app-lifetime
 `ChatWorkspace`. It does not switch the visible v1 screen to the v2 Chat tab;
 that wiring belongs to #25. No existing document data is reset.
 
 ## Composition and lifecycle
 
 Create one `AppleFoundationModels` adapter and pass it as both `backend` and
-`contextProbe` when constructing `GeneralChatEngine`. Supply a `ModelSnapshot`
+`contextProbe` when constructing `ChatEngine`. Supply a `ModelSnapshot`
 identifying the local runtime/build; the engine adds `general-v1` prompt metadata.
-The engine has no knowledge repository or retrieval dependency.
+General-only composition needs no knowledge repository or retrieval dependency.
+For both modes, see [grounded chat integration](v2-grounded-chat-integration.md).
 
 - `send(chatId:, text:)` atomically admits a General turn, then checks model
   availability, composes/measures the prompt and streams cumulative snapshots.
 - Observe `workspace.changes` and read `workspace.transcript(chatId)` to render
   persisted snapshots in place. Use the immutable turn mode and `answerLabel`
   (`General answer`); General turns have no source scope, evidence or citations.
-- The returned `GeneralTurnResult` contains the persisted terminal turn and
+- The returned `ChatTurnResult` contains the persisted terminal turn and
   `earlierContextSummarized`. Failed turns retain a typed `TurnFailure`, not a
   native error string or an invented assistant response.
 - Busy sends fail immediately; nothing is queued. The vault also prohibits a
@@ -46,11 +48,13 @@ silently truncated. The bounded summary remains extractive as established in
 `regenerate(chatId:, turnId:)` appends a new attempt using the original General
 question and context strictly before that turn. It does not delete or overwrite
 the original answer or later turns, and it does not change the chat's currently
-selected mode/sources. Knowledge Base regeneration is not handled by this engine.
+selected mode/sources. Issue #24 adds Knowledge Base regeneration to the same
+engine, using the original grounded scope.
 
 ## Native behavior and persistence
 
-The bridge explicitly selects `general` or `knowledge-base`. Older calls without
+The bridge explicitly selects `general`, `grounded-chat`, or the legacy
+`knowledge-base` mode. Older calls without
 a mode retain the frozen `guardrail-v1` document transformation behavior.
 General generation uses Apple's default model guardrails and separate
 instructions. It requests useful general information and concise contextual

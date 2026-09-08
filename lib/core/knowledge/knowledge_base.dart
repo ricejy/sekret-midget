@@ -46,6 +46,10 @@ final class KnowledgePreview {
   );
 }
 
+final class KnowledgeScopeUnavailable implements Exception {
+  const KnowledgeScopeUnavailable();
+}
+
 /// Owns v2 ingestion, recovery, catalogue, preview and indexed evidence. The
 /// caller owns the vault and disposes this module before closing the vault.
 /// Subscribe to changes before importing. Import returns once the original is
@@ -576,6 +580,83 @@ final class KnowledgeBase {
       ))
         passages.firstWhere((passage) => passage.id == id),
     ];
+  }
+
+  /// Fresh hybrid candidates across an explicit scope. No chat text or previous
+  /// answer is an evidence source. The engine owns final prompt admission.
+  Future<List<StoredEvidencePassage>> retrieveAcross({
+    required List<String> sourceIds,
+    required String question,
+  }) async {
+    _ensureOpen();
+    final scope = List<String>.unmodifiable(sourceIds.toSet());
+    if (scope.isEmpty || question.trim().isEmpty) return [];
+    Future<void> checkScope() async {
+      final indexed = (await _store.list())
+          .where(
+            (item) => item.processingState == KnowledgeProcessingState.indexed,
+          )
+          .map((item) => item.id)
+          .toSet();
+      if (!indexed.containsAll(scope)) throw const KnowledgeScopeUnavailable();
+    }
+
+    await checkScope();
+    final vector = await _embedder.embed(question);
+    if (vector.isEmpty || vector.any((value) => !value.isFinite)) {
+      throw const EmbeddingException(
+        EmbeddingFailureCode.vectorUnavailable,
+        'Retrieval is unavailable.',
+      );
+    }
+    await checkScope();
+    final passages = <StoredEvidencePassage>[];
+    final lexicalBySource = <List<int>>[];
+    for (final id in scope) {
+      passages.addAll(await _store.listIndexedEvidence(id));
+      lexicalBySource.add(
+        await _store.lexicalRanks(
+          id,
+          ftsQuery(question),
+          productionRetrievalConfiguration.candidateLimit,
+        ),
+      );
+    }
+    await checkScope();
+    final scored = <(int, double)>[];
+    for (final passage in passages) {
+      if (passage.vector == null) continue;
+      if (passage.vector!.length != vector.length) {
+        throw const EmbeddingException(
+          EmbeddingFailureCode.dimensionMismatch,
+          'Re-index selected sources.',
+        );
+      }
+      final score = cosineSimilarity(
+        vector,
+        dequantize(passage.vector!, passage.vectorScale),
+      );
+      if (score > 0) scored.add((passage.id, score));
+    }
+    scored.sort((a, b) => b.$2.compareTo(a.$2));
+    final dense = scored
+        .take(productionRetrievalConfiguration.candidateLimit)
+        .map((item) => item.$1)
+        .toList();
+    // BM25 scores from independent source queries are not directly comparable.
+    // Interleave their ranked lists before fusing with the global dense ranks.
+    final lexical = <int>[
+      for (
+        var rank = 0;
+        rank < productionRetrievalConfiguration.candidateLimit;
+        rank++
+      )
+        for (final source in lexicalBySource)
+          if (rank < source.length) source[rank],
+    ];
+    final ranked = fuseRanks(lexical, dense);
+    final byId = {for (final passage in passages) passage.id: passage};
+    return [for (final id in ranked) byId[id]!];
   }
 
   Future<void> dispose() async {

@@ -301,6 +301,7 @@ void main() {
       ALTER TABLE chats DROP COLUMN manually_titled;
       ALTER TABLE chats DROP COLUMN deletion_deadline;
       ALTER TABLE turns DROP COLUMN failure;
+      ALTER TABLE turn_provenance DROP COLUMN evidence_captured;
       DROP TABLE knowledge_pages;
       ALTER TABLE knowledge_items DROP COLUMN processing_message;
       PRAGMA user_version = 1;

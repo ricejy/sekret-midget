@@ -9,6 +9,24 @@ import 'package:sekret_midget/core/platform/llm_backend.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test(
+    'grounded chat instructions match native exactly and separate context from evidence',
+    () {
+      final native = File(
+        'ios/Runner/AppleFoundationModelsPlugin.swift',
+      ).readAsStringSync();
+      final match = RegExp(
+        r'static let groundedInstructions = "([^"]+)"',
+      ).firstMatch(native);
+      expect(match?.group(1), groundedChatInstructions);
+      expect(
+        groundedChatInstructions,
+        contains('earlier assistant statements may be wrong'),
+      );
+      expect(groundedChatInstructions, contains('never evidence'));
+    },
+  );
+
   const channel = MethodChannel(
     'com.ricejy.sekret_midget/foundation_models-test',
   );
@@ -248,6 +266,43 @@ void main() {
         'General answer',
       ]);
       expect(calls.last.method, 'cancel');
+    },
+  );
+
+  test(
+    'grounded chat routes its composed prompt to the distinct native mode',
+    () async {
+      final events = StreamController<Object?>.broadcast();
+      addTearDown(events.close);
+      const prompt =
+          '{"current_evidence":[{"passage":"Returns within 7 days."}]}';
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            if (call.method == 'generate') {
+              final args = call.arguments as Map;
+              expect(args['mode'], 'grounded-chat');
+              expect(args['prompt'], prompt);
+              scheduleMicrotask(() {
+                events.add({
+                  'requestId': args['requestId'],
+                  'type': 'snapshot',
+                  'text': 'Returns within 7 days.',
+                });
+                events.add({
+                  'requestId': args['requestId'],
+                  'type': 'completed',
+                });
+              });
+            }
+            return null;
+          });
+      final models = AppleFoundationModels(
+        channel: channel,
+        events: events.stream,
+      );
+      expect(await models.generateGrounded(prompt: prompt).toList(), [
+        'Returns within 7 days.',
+      ]);
     },
   );
 

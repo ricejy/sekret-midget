@@ -9,6 +9,7 @@ final class AppleFoundationModels
     implements
         LlmBackend,
         GeneralLlmBackend,
+        GroundedLlmBackend,
         LlmSettingsController,
         TokenCounter,
         ModelContextProbe {
@@ -118,6 +119,10 @@ final class AppleFoundationModels
   @override
   Stream<String> generateGeneral({required String prompt}) =>
       _generate(prompt, mode: 'general');
+
+  @override
+  Stream<String> generateGrounded({required String prompt}) =>
+      _generate(prompt, mode: 'grounded-chat');
 
   Stream<String> _generate(String prompt, {required String mode}) {
     final requestId =

@@ -15,6 +15,8 @@ enum TurnOutcome {
 }
 
 enum TurnFailure {
+  sourcesUnavailable,
+  retrievalUnavailable,
   deviceNotEligible,
   appleIntelligenceNotEnabled,
   modelNotReady,
@@ -38,7 +40,7 @@ enum KnowledgeProcessingState {
   needsReindexing,
 }
 
-const localDataVaultSchemaVersion = 4;
+const localDataVaultSchemaVersion = 5;
 
 final class VaultWriteException implements Exception {
   const VaultWriteException(this.cause);
@@ -373,6 +375,7 @@ final class StorageUsage {
 }
 
 abstract interface class VaultChats {
+  Future<void> captureEvidence(String turnId, List<int> passageIds);
   Future<String?> currentChatId();
   Future<void> selectChat(String? id);
   Future<void> renameChat(String chatId, String title);
@@ -413,6 +416,7 @@ abstract interface class VaultChats {
     required List<int> evidencePassageIds,
     required List<int> citationEvidenceIndexes,
     required ModelSnapshot model,
+    bool deferEvidence = false,
   });
 
   Future<List<TurnRecord>> listTurns(String chatId);
@@ -663,6 +667,11 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
           case 3:
             _createKnowledgeLifecycleSchema();
             version = 4;
+          case 4:
+            _database.execute(
+              'ALTER TABLE turn_provenance ADD COLUMN evidence_captured INTEGER NOT NULL DEFAULT 1;',
+            );
+            version = 5;
           default:
             throw InvalidVaultSchemaException(const []);
         }
@@ -714,6 +723,11 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
         .select('PRAGMA table_info(turns);')
         .any((row) => row['name'] == 'failure')) {
       throw const InvalidVaultSchemaException(['turn failure column']);
+    }
+    if (!_database
+        .select('PRAGMA table_info(turn_provenance);')
+        .any((row) => row['name'] == 'evidence_captured')) {
+      throw const InvalidVaultSchemaException(['evidence capture column']);
     }
     if (!_database
         .select('PRAGMA table_info(knowledge_items);')
@@ -797,7 +811,8 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
         mode TEXT NOT NULL,
         model_identifier TEXT NOT NULL,
         model_revision TEXT NOT NULL,
-        model_metadata_json TEXT NOT NULL
+        model_metadata_json TEXT NOT NULL,
+        evidence_captured INTEGER NOT NULL DEFAULT 1
       );
 
       CREATE TABLE turn_source_scope (
@@ -1193,7 +1208,17 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
     required List<int> evidencePassageIds,
     required List<int> citationEvidenceIndexes,
     required ModelSnapshot model,
+    bool deferEvidence = false,
   }) async {
+    if (deferEvidence &&
+        (mode != ChatMode.knowledgeBase ||
+            outcome != TurnOutcome.generating ||
+            evidencePassageIds.isNotEmpty ||
+            citationEvidenceIndexes.isNotEmpty)) {
+      throw ArgumentError(
+        'Deferred evidence requires a new grounded generating turn.',
+      );
+    }
     _ensureOpen();
     _requireVisibleChat(chatId);
     final now = _now();
@@ -1272,6 +1297,12 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
       }
 
       final evidenceIds = <int>[];
+      if (deferEvidence) {
+        _database.execute(
+          'UPDATE turn_provenance SET evidence_captured = 0 WHERE turn_id = ?;',
+          [turnId],
+        );
+      }
       for (var rank = 0; rank < evidencePassageIds.length; rank += 1) {
         final passageRows = _database.select(
           '''
@@ -1378,6 +1409,89 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
       [chatId],
     );
     return [for (final row in turnRows) _turnFromRow(row)];
+  }
+
+  /// One-time input capture, before any output. All scope and evidence checks
+  /// and snapshots share one transaction, so re-index/delete cannot mix inputs.
+  @override
+  Future<void> captureEvidence(String turnId, List<int> passageIds) async {
+    _transaction(() {
+      final turn = _database.select(
+        '''SELECT turns.chat_id FROM turns
+        JOIN turn_provenance ON turn_id = turns.id JOIN chats ON chats.id = turns.chat_id
+        WHERE turns.id = ? AND outcome = 'generating' AND assistant_text = ''
+          AND turn_provenance.mode = 'knowledge-base' AND evidence_captured = 0
+          AND deletion_deadline IS NULL;''',
+        [turnId],
+      );
+      if (turn.isEmpty) {
+        throw StateError(
+          'Evidence is already sealed or the turn is unavailable.',
+        );
+      }
+      final scope = _database.select(
+        '''SELECT source_id, source_title FROM turn_source_scope
+        WHERE turn_id = ? ORDER BY ordinal;''',
+        [turnId],
+      );
+      for (final source in scope) {
+        if (_database.select(
+          "SELECT 1 FROM knowledge_items WHERE id = ? AND processing_state = 'indexed';",
+          [source['source_id']],
+        ).isEmpty) {
+          throw StateError('Original sources are unavailable.');
+        }
+      }
+      final titles = {
+        for (final source in scope) source['source_id']: source['source_title'],
+      };
+      if (passageIds.toSet().length != passageIds.length) {
+        throw ArgumentError('Duplicate evidence.');
+      }
+      for (var rank = 0; rank < passageIds.length; rank++) {
+        final rows = _database.select(
+          '''SELECT text, heading, page, knowledge_item_id
+          FROM knowledge_passages WHERE id = ?;''',
+          [passageIds[rank]],
+        );
+        if (rows.isEmpty ||
+            !titles.containsKey(rows.single['knowledge_item_id'])) {
+          throw StateError(
+            'Evidence is outside the captured scope or was re-indexed.',
+          );
+        }
+        final row = rows.single;
+        final sourceId = row['knowledge_item_id'];
+        _database.execute(
+          '''INSERT INTO turn_evidence
+          (turn_id, source_id, source_title, passage_text, heading, page, rank)
+          VALUES (?, ?, ?, ?, ?, ?, ?);''',
+          [
+            turnId,
+            sourceId,
+            titles[sourceId],
+            row['text'],
+            row['heading'],
+            row['page'],
+            rank,
+          ],
+        );
+        final evidenceId = _database.lastInsertRowId;
+        // Source cards describe admitted evidence, never inferred claim links.
+        _database.execute(
+          'INSERT INTO turn_citations (turn_id, evidence_id, display_order) VALUES (?, ?, ?);',
+          [turnId, evidenceId, rank],
+        );
+      }
+      _database.execute(
+        'UPDATE turn_provenance SET evidence_captured = 1 WHERE turn_id = ?;',
+        [turnId],
+      );
+      _database.execute(
+        'UPDATE chats SET revision = revision + 1 WHERE id = ?;',
+        [turn.single['chat_id']],
+      );
+    });
   }
 
   @override

@@ -16,7 +16,7 @@ import 'package:sekret_midget/core/storage/local_data_vault.dart';
 import 'package:sekret_midget/demo/fake_native_capabilities.dart';
 import 'package:sekret_midget/ui/chat/answer_content.dart';
 import 'package:sekret_midget/ui/chat/chat_screen.dart';
-import 'package:sekret_midget/ui/chat/source_preview.dart';
+import 'package:sekret_midget/ui/knowledge/source_preview.dart';
 
 void main() => registerChatScreenTests();
 
@@ -480,7 +480,10 @@ void registerChatScreenTests({bool physicalDevice = false}) {
       await tester.pumpWidget(
         CupertinoApp(
           localizationsDelegates: const [DefaultMaterialLocalizations.delegate],
-          home: SourcePreview(preview: preview!),
+          home: SourcePreview(
+            knowledge: knowledge,
+            location: preview!.location,
+          ),
         ),
       );
       await settle(tester);

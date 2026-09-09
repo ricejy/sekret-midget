@@ -14,7 +14,8 @@ import '../core/platform/pdfrx_pdf_page_rasterizer.dart';
 import '../core/platform/pdfrx_pdf_text_extractor.dart';
 import '../core/storage/local_data_vault.dart';
 import 'chat/chat_screen.dart';
-import 'chat/source_preview.dart';
+import 'knowledge/source_preview.dart';
+import 'knowledge/knowledge_screen.dart';
 
 class ChatAppResources {
   ChatAppResources(
@@ -219,7 +220,10 @@ class _SekretChatAppState extends State<SekretChatApp>
                       onKnowledgeBase: () => _tabs.index = 1,
                       onPreview: (preview) => Navigator.of(context).push<void>(
                         CupertinoPageRoute(
-                          builder: (_) => SourcePreview(preview: preview),
+                          builder: (_) => SourcePreview(
+                            knowledge: resources.knowledge,
+                            location: preview.location,
+                          ),
                         ),
                       ),
                       onLink: (uri) async {
@@ -233,18 +237,19 @@ class _SekretChatAppState extends State<SekretChatApp>
                       onSettings: resources.models.openSettings,
                     );
                   }
-                  return CupertinoPageScaffold(
+                  if (index == 1) {
+                    return KnowledgeScreen(knowledge: resources.knowledge);
+                  }
+                  return const CupertinoPageScaffold(
                     navigationBar: CupertinoNavigationBar(
-                      middle: Text(index == 1 ? 'Knowledge Base' : 'Settings'),
+                      middle: Text('Settings'),
                     ),
                     child: SafeArea(
                       child: Center(
                         child: Padding(
-                          padding: const EdgeInsets.all(24),
+                          padding: EdgeInsets.all(24),
                           child: Text(
-                            index == 1
-                                ? 'The catalogue and import interface is the next refinement ticket. Your existing v2 sources remain available in Chat.'
-                                : 'Settings and app protection are coming in the following refinement ticket.',
+                            'Settings and app protection are coming in the following refinement ticket.',
                           ),
                         ),
                       ),

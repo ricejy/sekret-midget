@@ -23,6 +23,12 @@ void main() {
     'tabs keep generation alive, while backgrounding obscures and interrupts',
     (tester) async {
       final vault = await openLocalDataVault(databasePath: ':memory:');
+      await vault.settings.update(
+        retentionPolicy: RetentionPolicy.manual,
+        biometricLockEnabled: false,
+        lockDelay: AppLockDelay.immediate,
+        onboardingComplete: true,
+      );
       final workspace = await ChatWorkspace.open(vault);
       final knowledge = await KnowledgeBase.open(
         vault: vault,

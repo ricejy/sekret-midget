@@ -339,7 +339,7 @@ void main() {
         old.execute(
           'ALTER TABLE turns DROP COLUMN failure; DROP TABLE knowledge_pages; '
           'ALTER TABLE knowledge_items DROP COLUMN processing_message; '
-          'ALTER TABLE turn_provenance DROP COLUMN evidence_captured; PRAGMA user_version = 2;',
+          'ALTER TABLE turn_provenance DROP COLUMN evidence_captured; ALTER TABLE vault_settings DROP COLUMN onboarding_complete; PRAGMA user_version = 2;',
         );
         old.close();
         vault = await openLocalDataVault(databasePath: path);

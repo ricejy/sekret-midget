@@ -301,6 +301,13 @@ final class ChatWorkspace {
     await _scheduleDeletion();
   });
 
+  /// The caller stops generation and removes editing surfaces first.
+  Future<void> deleteAllChats() => _run(() async {
+    _deletionTimer?.cancel();
+    await _vault.chats.deleteAll();
+    _currentChatId = null;
+  });
+
   Future<bool> undoDelete(String chatId) => _run(() async {
     final restored = await _vault.chats.undoDeletion(chatId);
     await _vault.chats.reap();

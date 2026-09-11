@@ -408,6 +408,38 @@ void main() {
     },
   );
 
+  test(
+    'schema 5 upgrades onboarding without resetting content or security',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'sekret-settings-migration-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final path = '${directory.path}/vault.sqlite3';
+      var vault = await openLocalDataVault(databasePath: path);
+      final chat = await vault.chats.createChat();
+      await vault.settings.update(
+        retentionPolicy: RetentionPolicy.ninetyDays,
+        biometricLockEnabled: true,
+        lockDelay: AppLockDelay.fifteenMinutes,
+      );
+      await vault.close();
+      final old = sqlite3.open(path);
+      old.execute(
+        'ALTER TABLE vault_settings DROP COLUMN onboarding_complete; PRAGMA user_version = 5;',
+      );
+      old.close();
+      vault = await openLocalDataVault(databasePath: path);
+      addTearDown(vault.close);
+      expect((await vault.chats.listChats()).single.id, chat.id);
+      final settings = await vault.settings.get();
+      expect(settings.retentionPolicy, RetentionPolicy.ninetyDays);
+      expect(settings.biometricLockEnabled, isTrue);
+      expect(settings.lockDelay, AppLockDelay.fifteenMinutes);
+      expect(settings.onboardingComplete, isFalse);
+    },
+  );
+
   test('a newer schema is rejected without changing its data', () async {
     final directory = await Directory.systemTemp.createTemp(
       'sekret-v2-vault-future-',

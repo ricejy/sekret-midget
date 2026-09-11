@@ -443,7 +443,7 @@ void registerGroundedChatTests({
         await vault.close();
         final db = sqlite3.open(path);
         db.execute(
-          'ALTER TABLE turn_provenance DROP COLUMN evidence_captured; PRAGMA user_version = 4;',
+          'ALTER TABLE turn_provenance DROP COLUMN evidence_captured; ALTER TABLE vault_settings DROP COLUMN onboarding_complete; PRAGMA user_version = 4;',
         );
         db.close();
         vault = await openLocalDataVault(databasePath: path);

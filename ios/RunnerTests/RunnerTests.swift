@@ -4,10 +4,44 @@ import FoundationModels
 import NaturalLanguage
 import UIKit
 import XCTest
+import LocalAuthentication
 
 @testable import Runner
 
 final class RunnerTests: XCTestCase {
+  func testImportPurgeDeletesOnlyCopiedInboxFixtures() throws {
+    let manager = FileManager.default
+    let root = manager.temporaryDirectory.appendingPathComponent("sekret-cleanup-test-\(UUID().uuidString)")
+    try manager.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? manager.removeItem(at: root) }
+    let inbox = root.appendingPathComponent("fixture-Inbox")
+    try manager.createDirectory(at: inbox, withIntermediateDirectories: true)
+    try Data("fictional copy".utf8).write(to: inbox.appendingPathComponent("copy.txt"))
+    let originals = root.appendingPathComponent("originals")
+    try manager.createDirectory(at: originals, withIntermediateDirectories: true)
+    let original = originals.appendingPathComponent("original.txt")
+    try Data("preserve fictional original".utf8).write(to: original)
+    let link = root.appendingPathComponent("linked-Inbox")
+    try manager.createSymbolicLink(at: link, withDestinationURL: originals)
+    try DeviceProtectionPlugin.purgeImportCopies(in: [root])
+    XCTAssertFalse(manager.fileExists(atPath: inbox.path))
+    XCTAssertEqual(try String(contentsOf: original, encoding: .utf8), "preserve fictional original")
+    XCTAssertTrue(manager.fileExists(atPath: link.path))
+  }
+
+  func testDeviceProtectionUsesPasscodeFallbackAndContentFreeDiagnostics() {
+    XCTAssertEqual(DeviceProtectionPlugin.authenticationPolicy, LAPolicy.deviceOwnerAuthentication)
+    XCTAssertEqual(Set(DeviceProtectionPlugin.diagnostics().keys), Set(["version", "build", "os", "authentication"]))
+  }
+
+  func testImportCleanupIsConfinedToDescendantsNotSiblingPaths() {
+    let inbox = URL(fileURLWithPath: "/private/tmp/sekret-fixture-Inbox")
+    XCTAssertTrue(DeviceProtectionPlugin.isInside(inbox.appendingPathComponent("fixture.pdf"), directory: inbox))
+    XCTAssertFalse(DeviceProtectionPlugin.isInside(inbox, directory: inbox))
+    XCTAssertFalse(DeviceProtectionPlugin.isInside(URL(fileURLWithPath: "/private/tmp/sekret-fixture-Inbox-other/fixture.pdf"), directory: inbox))
+    XCTAssertFalse(DeviceProtectionPlugin.isInside(inbox.appendingPathComponent("../outside.pdf"), directory: inbox))
+  }
+
   func testAvailabilityReportsLanguageDimensionAndRevision() {
     let service = AppleSentenceEmbeddingService(
       model: FakeSentenceEmbeddingModel(

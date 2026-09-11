@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'document_image_picker.dart';
 import 'file_selector_document_image_picker.dart';

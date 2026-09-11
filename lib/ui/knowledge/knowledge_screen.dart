@@ -5,7 +5,7 @@ import '../../core/storage/local_data_vault.dart';
 import '../../core/platform/pdf_file_picker.dart';
 import '../../core/platform/document_image_picker.dart';
 import '../../core/platform/file_selector_pdf_picker.dart';
-import '../../core/platform/file_selector_document_image_picker.dart';
+import '../../core/platform/photos_document_image_picker.dart';
 import '../chat/chat_sheets.dart' show processingLabel;
 import 'source_preview.dart';
 import 'import_sheet.dart';
@@ -33,7 +33,7 @@ class KnowledgeScreen extends StatefulWidget {
     super.key,
     required this.knowledge,
     this.pdfPicker = const FileSelectorPdfPicker(),
-    this.imagePicker = const FileSelectorDocumentImagePicker(),
+    this.imagePicker = const PhotosDocumentImagePicker(),
   });
   final KnowledgeBase knowledge;
   final PdfFilePicker pdfPicker;

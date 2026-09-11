@@ -1,4 +1,6 @@
 import 'package:file_selector/file_selector.dart';
+import 'dart:io';
+import 'device_protection.dart';
 
 import 'pdf_file_picker.dart';
 
@@ -20,6 +22,12 @@ final class FileSelectorPdfPicker implements PdfFilePicker {
     if (file == null) {
       return null;
     }
-    return SelectedPdfFile(name: file.name, bytes: await file.readAsBytes());
+    try {
+      return SelectedPdfFile(name: file.name, bytes: await file.readAsBytes());
+    } finally {
+      if (Platform.isIOS) {
+        await const AppleDeviceProtection().discardImportCopy(file.path);
+      }
+    }
   }
 }

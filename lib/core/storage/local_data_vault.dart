@@ -40,7 +40,7 @@ enum KnowledgeProcessingState {
   needsReindexing,
 }
 
-const localDataVaultSchemaVersion = 5;
+const localDataVaultSchemaVersion = 6;
 
 final class VaultWriteException implements Exception {
   const VaultWriteException(this.cause);
@@ -339,11 +339,13 @@ final class VaultSettingsRecord {
     required this.retentionPolicy,
     required this.biometricLockEnabled,
     required this.lockDelay,
+    this.onboardingComplete = false,
   });
 
   final RetentionPolicy retentionPolicy;
   final bool biometricLockEnabled;
   final AppLockDelay lockDelay;
+  final bool onboardingComplete;
 }
 
 final class StorageUsage {
@@ -375,6 +377,7 @@ final class StorageUsage {
 }
 
 abstract interface class VaultChats {
+  Future<void> deleteAll();
   Future<void> captureEvidence(String turnId, List<int> passageIds);
   Future<String?> currentChatId();
   Future<void> selectChat(String? id);
@@ -483,6 +486,7 @@ abstract interface class VaultSettings {
     required RetentionPolicy retentionPolicy,
     required bool biometricLockEnabled,
     required AppLockDelay lockDelay,
+    bool? onboardingComplete,
   });
 }
 
@@ -603,15 +607,20 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
       _database.execute('DELETE FROM knowledge_passages_fts;');
       _database.execute('DELETE FROM chats;');
       _database.execute('DELETE FROM knowledge_items;');
+      _database.execute(
+        "INSERT INTO knowledge_passages_fts(knowledge_passages_fts) VALUES ('rebuild');",
+      );
       _database.execute('COMMIT;');
     } on Object catch (error) {
       _database.execute('ROLLBACK;');
       throw VaultWriteException(error);
     }
+    _database.execute('VACUUM;');
   }
 
   void _openSchema() {
     _database.execute('PRAGMA foreign_keys = ON;');
+    _database.execute('PRAGMA secure_delete = ON;');
     final foundVersion =
         _database.select('PRAGMA user_version;').single['user_version'] as int;
     if (foundVersion > localDataVaultSchemaVersion) {
@@ -672,6 +681,9 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
               'ALTER TABLE turn_provenance ADD COLUMN evidence_captured INTEGER NOT NULL DEFAULT 1;',
             );
             version = 5;
+          case 5:
+            _createOnboardingSchema();
+            version = 6;
           default:
             throw InvalidVaultSchemaException(const []);
         }
@@ -718,6 +730,11 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
       'deletion_deadline',
     })) {
       throw const InvalidVaultSchemaException(['chats lifecycle columns']);
+    }
+    if (!_database
+        .select('PRAGMA table_info(vault_settings);')
+        .any((row) => row['name'] == 'onboarding_complete')) {
+      throw const InvalidVaultSchemaException(['onboarding column']);
     }
     if (!_database
         .select('PRAGMA table_info(turns);')
@@ -872,7 +889,12 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
     ''');
     _createChatLifecycleSchema();
     _createKnowledgeLifecycleSchema();
+    _createOnboardingSchema();
   }
+
+  void _createOnboardingSchema() => _database.execute(
+    'ALTER TABLE vault_settings ADD COLUMN onboarding_complete INTEGER NOT NULL DEFAULT 0;',
+  );
 
   void _createKnowledgeLifecycleSchema() {
     _database.execute('''
@@ -901,6 +923,12 @@ final class _SqliteLocalDataVault implements LocalDataVault, VaultChats {
         WHERE outcome = 'generating';
       CREATE INDEX chat_activity ON chats(updated_at);
     ''');
+  }
+
+  @override
+  Future<void> deleteAll() async {
+    _ensureOpen();
+    _database.execute('DELETE FROM chats;');
   }
 
   @override
@@ -2117,7 +2145,7 @@ final class _SqliteVaultSettings implements VaultSettings {
   Future<VaultSettingsRecord> get() async {
     _vault._ensureOpen();
     final row = _vault._database.select('''
-      SELECT retention_policy, biometric_lock_enabled, lock_delay
+      SELECT retention_policy, biometric_lock_enabled, lock_delay, onboarding_complete
       FROM vault_settings
       WHERE singleton_id = 1;
     ''').single;
@@ -2127,6 +2155,7 @@ final class _SqliteVaultSettings implements VaultSettings {
       ),
       biometricLockEnabled: row['biometric_lock_enabled'] == 1,
       lockDelay: _appLockDelayFromValue(row['lock_delay'] as String),
+      onboardingComplete: row['onboarding_complete'] == 1,
     );
   }
 
@@ -2135,18 +2164,21 @@ final class _SqliteVaultSettings implements VaultSettings {
     required RetentionPolicy retentionPolicy,
     required bool biometricLockEnabled,
     required AppLockDelay lockDelay,
+    bool? onboardingComplete,
   }) async {
     _vault._ensureOpen();
     _vault._database.execute(
       '''
         UPDATE vault_settings
-        SET retention_policy = ?, biometric_lock_enabled = ?, lock_delay = ?
+        SET retention_policy = ?, biometric_lock_enabled = ?, lock_delay = ?,
+            onboarding_complete = COALESCE(?, onboarding_complete)
         WHERE singleton_id = 1;
       ''',
       [
         _retentionPolicyValue(retentionPolicy),
         biometricLockEnabled ? 1 : 0,
         _appLockDelayValue(lockDelay),
+        onboardingComplete == null ? null : (onboardingComplete ? 1 : 0),
       ],
     );
   }

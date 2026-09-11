@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'core/library/document_library.dart';
 import 'core/platform/document_image_picker.dart';
 import 'core/platform/embedder.dart';
-import 'core/platform/file_selector_document_image_picker.dart';
+import 'core/platform/photos_document_image_picker.dart';
 import 'core/platform/file_selector_pdf_picker.dart';
 import 'core/platform/llm_backend.dart';
 import 'core/platform/pdf_file_picker.dart';
@@ -28,7 +28,7 @@ final class SekretMidgetApp extends StatefulWidget {
     this.documentLibraryFuture,
     this.modelAvailability,
     this.pdfFilePicker = const FileSelectorPdfPicker(),
-    this.documentImagePicker = const FileSelectorDocumentImagePicker(),
+    this.documentImagePicker = const PhotosDocumentImagePicker(),
   }) : assert(
          documentLibrary == null || documentLibraryFuture == null,
          'Provide either documentLibrary or documentLibraryFuture, not both.',
@@ -86,7 +86,7 @@ final class _SekretMidgetAppState extends State<SekretMidgetApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Sekret Midget',
+      title: 'Sekret',
       debugShowCheckedModeBanner: false,
       theme: _theme(),
       home: FutureBuilder<DocumentLibrary>(
@@ -660,7 +660,7 @@ final class _Header extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'SEKRET MIDGET',
+                    'SEKRET',
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
                       letterSpacing: 1.8,
                       fontWeight: FontWeight.w800,

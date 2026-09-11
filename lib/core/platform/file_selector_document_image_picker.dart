@@ -1,4 +1,6 @@
 import 'package:file_selector/file_selector.dart';
+import 'dart:io';
+import 'device_protection.dart';
 
 import 'document_image_picker.dart';
 
@@ -20,9 +22,15 @@ final class FileSelectorDocumentImagePicker implements DocumentImagePicker {
     if (file == null) {
       return null;
     }
-    return SelectedDocumentImage(
-      name: file.name,
-      bytes: await file.readAsBytes(),
-    );
+    try {
+      return SelectedDocumentImage(
+        name: file.name,
+        bytes: await file.readAsBytes(),
+      );
+    } finally {
+      if (Platform.isIOS) {
+        await const AppleDeviceProtection().discardImportCopy(file.path);
+      }
+    }
   }
 }

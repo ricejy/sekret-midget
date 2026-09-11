@@ -35,6 +35,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _input = TextEditingController();
+  final _messageFocus = FocusNode();
   final _scroll = ScrollController();
   final _drafts = <String, String>{};
   final _expandedSources = <String>{};
@@ -361,6 +362,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       subscription.cancel();
     }
     _input.dispose();
+    _messageFocus.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -707,15 +709,23 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Expanded(
-              child: CupertinoTextField(
-                controller: _input,
-                placeholder: 'Message',
-                minLines: 1,
-                maxLines: 4,
-                enabled: _availability is Available,
-                textCapitalization: TextCapitalization.sentences,
-                onChanged: (_) => setState(() {}),
-                padding: const EdgeInsets.all(12),
+              child: TextFieldTapRegion(
+                groupId: _messageFocus,
+                // Dismiss on release so controls do not move before their tap
+                // finishes. Unfocus only the composer, not selectable answers.
+                onTapUpOutside: (_) => _messageFocus.unfocus(),
+                child: CupertinoTextField(
+                  controller: _input,
+                  focusNode: _messageFocus,
+                  groupId: _messageFocus,
+                  placeholder: 'Message',
+                  minLines: 1,
+                  maxLines: 4,
+                  enabled: _availability is Available,
+                  textCapitalization: TextCapitalization.sentences,
+                  onChanged: (_) => setState(() {}),
+                  padding: const EdgeInsets.all(12),
+                ),
               ),
             ),
             CupertinoButton(

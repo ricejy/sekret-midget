@@ -11,8 +11,9 @@ v1 schema is still refused without a reset.
   count, processing state and checkpoint progress. The count reflects the current
   local query and filters. Search covers titles, source names and extracted text,
   never chats, and opens the matching page/passage.
-- Add offers pasted text, PDF and photograph. Binary sources use the existing
-  native Files pickers; cancelling a picker adds nothing. Text admission requires
+- Add offers pasted text, PDF and photograph. PDFs use the native Files picker;
+  photographs use the system Photos picker on iPhone (updated during #27 owner
+  review). Cancelling a picker adds nothing. Text admission requires
   a non-empty title and body. The shared KnowledgeBase module retains originals,
   detects duplicates, and owns all indexing/recovery work.
 - Duplicates offer Keep existing or Open existing. A newly admitted source clears

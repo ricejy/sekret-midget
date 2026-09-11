@@ -7,7 +7,9 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Sekret Midget</string>
+	<string>Sekret</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Use Face ID to unlock Sekret and authorize changes to your private local data.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

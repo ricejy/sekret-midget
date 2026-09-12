@@ -130,14 +130,17 @@ class AnswerContent extends StatelessWidget {
     final heading = RegExp(r'^h[1-6]$').hasMatch(node.tag);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
-      child: SelectableText.rich(
-        TextSpan(children: [for (final n in children) _inline(context, n)]),
-        style: TextStyle(
-          height: 1.45,
-          fontSize: heading ? 21 : 17,
-          fontWeight: heading || node.tag == 'th'
-              ? FontWeight.w600
-              : FontWeight.normal,
+      child: Semantics(
+        header: heading || node.tag == 'th',
+        child: SelectableText.rich(
+          TextSpan(children: [for (final n in children) _inline(context, n)]),
+          style: TextStyle(
+            height: 1.45,
+            fontSize: heading ? 21 : 17,
+            fontWeight: heading || node.tag == 'th'
+                ? FontWeight.w600
+                : FontWeight.normal,
+          ),
         ),
       ),
     );

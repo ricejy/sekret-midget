@@ -9,6 +9,7 @@ import '../../core/platform/llm_backend.dart';
 import '../../core/storage/local_data_vault.dart';
 import 'answer_content.dart';
 import 'chat_sheets.dart';
+import '../accessible_controls.dart';
 
 /// UI only: the app owns the workspace, knowledge module, engine and lifecycle.
 class ChatScreen extends StatefulWidget {
@@ -412,53 +413,55 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       ),
     ),
     child: SafeArea(
-      child: Column(
-        children: [
-          Expanded(
-            child: _chat == null
-                ? Center(
-                    child: CupertinoButton(
-                      onPressed: _initialize,
-                      child: const Text('Open Chat'),
-                    ),
-                  )
-                : ListView(
-                    controller: _scroll,
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 24,
-                    ),
-                    children: [
-                      if (_turns.isEmpty) _empty(),
-                      for (final turn in _turns) _turn(turn),
-                      if (_summary)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Text(
-                            'Earlier conversation summarized',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: CupertinoColors.secondaryLabel.resolveFrom(
-                                context,
-                              ),
-                            ),
+      child: PanelAndContent(
+        panelAtBottom: true,
+        content: _chat == null
+            ? Center(
+                child: CupertinoButton(
+                  onPressed: _initialize,
+                  child: const Text('Open Chat'),
+                ),
+              )
+            : ListView(
+                controller: _scroll,
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 24,
+                ),
+                children: [
+                  if (_turns.isEmpty) _empty(),
+                  for (final turn in _turns) _turn(turn),
+                  if (_summary)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        'Earlier conversation summarized',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: CupertinoColors.secondaryLabel.resolveFrom(
+                            context,
                           ),
                         ),
-                    ],
-                  ),
-          ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                _error!,
-                style: const TextStyle(color: CupertinoColors.systemRed),
+                      ),
+                    ),
+                ],
               ),
-            ),
-          _composer(),
-        ],
+        panel: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: CupertinoColors.systemRed),
+                ),
+              ),
+            _composer(),
+          ],
+        ),
       ),
     ),
   );
@@ -648,14 +651,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             'Another chat is responding. Stop it before sending.',
             style: TextStyle(fontSize: 13),
           ),
-        CupertinoSlidingSegmentedControl<ChatMode>(
-          groupValue: _chat?.mode ?? ChatMode.general,
-          children: const {
-            ChatMode.general: Text('General'),
-            ChatMode.knowledgeBase: Text('Knowledge Base'),
+        AccessibleChoice<ChatMode>(
+          value: _chat?.mode ?? ChatMode.general,
+          labels: const {
+            ChatMode.general: 'General',
+            ChatMode.knowledgeBase: 'Knowledge Base',
           },
-          onValueChanged: (mode) {
-            if (mode != null) _scope(mode, _chat?.selectedSourceIds ?? []);
+          onChanged: (mode) {
+            _scope(mode, _chat?.selectedSourceIds ?? []);
           },
         ),
         if (_chat?.mode == ChatMode.knowledgeBase) ...[
@@ -762,16 +765,29 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         : processingLabel(item.processingState);
     return Semantics(
       label: '${item?.title ?? 'Source'} · $status',
+      excludeSemantics: true,
       child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * .65,
+        ),
         margin: const EdgeInsets.only(left: 8),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: CupertinoColors.tertiarySystemFill.resolveFrom(context),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Text(
-          item == null ? status : '${item.title} · $status',
-          style: const TextStyle(fontSize: 13),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (item != null)
+              Text(
+                item.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13),
+              ),
+            Text(status, style: const TextStyle(fontSize: 13)),
+          ],
         ),
       ),
     );

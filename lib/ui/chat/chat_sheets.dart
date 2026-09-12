@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import '../../core/chat/chat_workspace.dart';
 import '../../core/knowledge/knowledge_base.dart';
 import '../../core/storage/local_data_vault.dart';
+import '../accessible_controls.dart';
 
 String processingLabel(KnowledgeProcessingState state) => switch (state) {
   KnowledgeProcessingState.processing => 'Processing',
@@ -48,6 +49,7 @@ class _ChatHistoryState extends State<ChatHistory> {
   }
 
   Future<void> _delete(ChatRecord chat) async {
+    if (widget.isBusy()) return;
     try {
       await widget.workspace.deleteChat(chat.id);
       if (!mounted) return;
@@ -119,91 +121,112 @@ class _ChatHistoryState extends State<ChatHistory> {
       ),
     ),
     child: SafeArea(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: CupertinoSearchTextField(
-              controller: _search,
-              placeholder: 'Search chats',
-              onChanged: (_) => _load(),
+      child: PanelAndContent(
+        panel: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: CupertinoSearchTextField(
+                controller: _search,
+                placeholder: 'Search chats',
+                onChanged: (_) => _load(),
+              ),
             ),
-          ),
-          if (_error != null) Text(_error!),
-          Expanded(
-            child: _chats.isEmpty
-                ? const Center(child: Text('No chats found'))
-                : ListView(
-                    children: [
-                      for (final chat in _chats)
-                        Dismissible(
-                          key: ValueKey(chat.id),
-                          direction: widget.isBusy()
-                              ? DismissDirection.none
-                              : DismissDirection.endToStart,
-                          background: Container(
-                            color: CupertinoColors.systemRed,
-                            alignment: Alignment.centerRight,
-                            padding: const EdgeInsets.all(16),
-                            child: const Text(
-                              'Delete',
-                              style: TextStyle(color: CupertinoColors.white),
-                            ),
-                          ),
-                          onDismissed: (_) {
-                            setState(
-                              () => _chats.removeWhere((c) => c.id == chat.id),
-                            );
-                            _delete(chat);
-                          },
-                          child: CupertinoListTile(
-                            title: Text(chat.title),
-                            subtitle: Text(
-                              chat.id == widget.workspace.currentChatId
+            if (_error != null) Text(_error!),
+            if (_undoId != null) _undoAction(),
+          ],
+        ),
+        content: _chats.isEmpty
+            ? const Center(child: Text('No chats found'))
+            : ListView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                children: [
+                  for (final chat in _chats)
+                    Dismissible(
+                      key: ValueKey(chat.id),
+                      direction: widget.isBusy()
+                          ? DismissDirection.none
+                          : DismissDirection.endToStart,
+                      background: Container(
+                        color: CupertinoColors.systemRed,
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.all(16),
+                        child: const Text(
+                          'Delete',
+                          style: TextStyle(color: CupertinoColors.white),
+                        ),
+                      ),
+                      onDismissed: (_) {
+                        setState(
+                          () => _chats.removeWhere((c) => c.id == chat.id),
+                        );
+                        _delete(chat);
+                      },
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: WrappingListAction(
+                              title: chat.title,
+                              subtitle:
+                                  chat.id == widget.workspace.currentChatId
                                   ? 'Current chat'
                                   : 'Saved on this device',
-                            ),
-                            onTap: () async {
-                              await widget.workspace.openChat(chat.id);
-                              if (context.mounted) Navigator.pop(context);
-                            },
-                            trailing: CupertinoButton(
-                              padding: EdgeInsets.zero,
-                              onPressed: () => _rename(chat),
-                              child: const Icon(
-                                CupertinoIcons.pencil,
-                                semanticLabel: 'Rename chat',
-                              ),
+                              onPressed: () async {
+                                await widget.workspace.openChat(chat.id);
+                                if (context.mounted) Navigator.pop(context);
+                              },
                             ),
                           ),
-                        ),
-                    ],
-                  ),
-          ),
-          if (_undoId != null)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text('Chat deleted'),
-                CupertinoButton(
-                  onPressed: () async {
-                    final id = _undoId;
-                    if (id == null) return;
-                    final restored = await widget.workspace.undoDelete(id);
-                    if (mounted) {
-                      setState(() {
-                        _undoId = null;
-                        if (!restored) _error = 'Undo has expired.';
-                      });
-                    }
-                  },
-                  child: const Text('Undo'),
-                ),
-              ],
-            ),
-        ],
+                          CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            onPressed: () => _rename(chat),
+                            child: const Icon(
+                              CupertinoIcons.pencil,
+                              semanticLabel: 'Rename chat',
+                            ),
+                          ),
+                          CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            onPressed: widget.isBusy()
+                                ? null
+                                : () => _delete(chat),
+                            child: const Icon(
+                              CupertinoIcons.trash,
+                              semanticLabel: 'Delete chat',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
       ),
     ),
+  );
+
+  Widget _undoAction() => Wrap(
+    alignment: WrapAlignment.center,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    children: [
+      Semantics(liveRegion: true, child: const Text('Chat deleted')),
+      CupertinoButton(
+        onPressed: () async {
+          final id = _undoId;
+          if (id == null) return;
+          final restored = await widget.workspace.undoDelete(id);
+          if (mounted) {
+            setState(() {
+              _undoId = null;
+              if (!restored) _error = 'Undo has expired.';
+            });
+          }
+        },
+        child: const Text('Undo'),
+      ),
+    ],
   );
 }
 
@@ -261,52 +284,55 @@ class _SourceSelectionState extends State<SourceSelection> {
       ),
     ),
     child: SafeArea(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: CupertinoSearchTextField(
-              controller: _search,
-              placeholder: 'Search sources',
-              onChanged: (_) => _load(),
+      child: PanelAndContent(
+        panel: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: CupertinoSearchTextField(
+                controller: _search,
+                placeholder: 'Search sources',
+                onChanged: (_) => _load(),
+              ),
             ),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              'Changes apply to future turns only. All selected sources must be indexed before asking.',
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'Changes apply to future turns only. All selected sources must be indexed before asking.',
+              ),
             ),
-          ),
-          if (_error != null) Text(_error!),
-          Expanded(
-            child: _items.isEmpty
-                ? const Center(child: Text('No sources found'))
-                : ListView(
-                    children: [
-                      for (final match in _items)
-                        Semantics(
-                          selected: _selected.contains(match.item.id),
-                          child: CupertinoListTile(
-                            title: Text(match.item.title),
-                            subtitle: Text(
-                              processingLabel(match.item.processingState),
-                            ),
-                            trailing: Icon(
-                              _selected.contains(match.item.id)
-                                  ? CupertinoIcons.checkmark_circle_fill
-                                  : CupertinoIcons.circle,
-                            ),
-                            onTap: () => setState(() {
-                              if (!_selected.remove(match.item.id)) {
-                                _selected.add(match.item.id);
-                              }
-                            }),
+            if (_error != null) Text(_error!),
+          ],
+        ),
+        content: _items.isEmpty
+            ? const Center(child: Text('No sources found'))
+            : ListView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                children: [
+                  for (final match in _items)
+                    Semantics(
+                      selected: _selected.contains(match.item.id),
+                      child: WrappingListAction(
+                        title: match.item.title,
+                        subtitle: processingLabel(match.item.processingState),
+                        trailing: ExcludeSemantics(
+                          child: Icon(
+                            _selected.contains(match.item.id)
+                                ? CupertinoIcons.checkmark_circle_fill
+                                : CupertinoIcons.circle,
                           ),
                         ),
-                    ],
-                  ),
-          ),
-        ],
+                        onPressed: () => setState(() {
+                          if (!_selected.remove(match.item.id)) {
+                            _selected.add(match.item.id);
+                          }
+                        }),
+                      ),
+                    ),
+                ],
+              ),
       ),
     ),
   );

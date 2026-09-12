@@ -15,27 +15,34 @@ import '../ui/sekret_chat_app.dart';
 
 /// Separate executable, never reachable from the normal app's main().
 /// Keeps actual device authentication while isolating every test vault record.
-void main() {
+void main() => runAcceptance();
+
+void runAcceptance({bool accessibility = false}) {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(
-    const Directionality(
+    Directionality(
       textDirection: TextDirection.ltr,
       child: Banner(
         message: 'TEST DATA',
         location: BannerLocation.topEnd,
-        child: SekretChatApp(openResources: _openAcceptance),
+        child: SekretChatApp(
+          openResources: () => _openAcceptance(accessibility: accessibility),
+        ),
       ),
     ),
   );
 }
 
-Future<ChatAppResources> _openAcceptance() async {
+Future<ChatAppResources> _openAcceptance({required bool accessibility}) async {
   if (!Platform.isIOS) throw StateError('The manual gate requires iPhone.');
   final support = await getApplicationSupportDirectory();
+  final namespace = accessibility
+      ? 'accessibility-acceptance'
+      : 'settings-acceptance';
   final directory = await Directory(
-    '${support.path}/settings-acceptance',
+    '${support.path}/$namespace',
   ).create(recursive: true);
-  final path = '${directory.path}/sekret-settings-acceptance.sqlite3';
+  final path = '${directory.path}/sekret-$namespace.sqlite3';
   final models = AppleFoundationModels();
   await models.protectStorage(
     directoryPath: directory.path,
@@ -93,8 +100,31 @@ Future<ChatAppResources> _openAcceptance() async {
       await vault.chats.appendTurn(
         chatId: chat.id,
         userText: 'What is this test?',
-        assistantText:
-            'This is a fictional acceptance chat. Your regular vault is not used.',
+        assistantText: accessibility
+            ? '''## Fictional accessibility sample
+
+This saved sample checks **emphasis**, readable paragraphs, and navigation by headings. Your regular vault is not used.
+
+### A short list
+
+- Open Chat history and rename a chat.
+- Select several Knowledge Base sources.
+- Rotate the phone with an unsent draft.
+
+### A wide table
+
+| Item | Review date | Notes |
+| --- | --- | --- |
+| Bluebird equipment | Friday | Fictional source for accessibility review |
+| Amber supplies | Monday | Check horizontal scrolling without clipping |
+
+### Code sample
+
+```text
+fictional_example_with_a_deliberately_long_line_for_horizontal_scrolling_only = true
+```
+'''
+            : 'This is a fictional acceptance chat. Your regular vault is not used.',
         outcome: TurnOutcome.completed,
         mode: ChatMode.general,
         sourceScopeIds: const [],
@@ -105,6 +135,24 @@ Future<ChatAppResources> _openAcceptance() async {
           revision: '1',
         ),
       );
+      if (accessibility) {
+        for (var index = 1; index <= 11; index++) {
+          await knowledge.importText(
+            title:
+                'Fictional archive $index — equipment review and storage instructions with a deliberately long source title',
+            text:
+                'Fictional archive number $index. The Bluebird review day is Friday. Store the sample equipment in the green cupboard. This record exists only for manual accessibility review.',
+          );
+        }
+        for (var index = 1; index <= 5; index++) {
+          final saved = await workspace.newChat();
+          await workspace.rename(
+            saved.id,
+            'Fictional saved chat $index — a deliberately long title for large-text history review',
+          );
+        }
+        await workspace.openChat(chat.id);
+      }
     }
     return resources;
   } on Object {

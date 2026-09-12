@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import '../../core/knowledge/knowledge_base.dart';
+import '../accessible_controls.dart';
 
 /// Owns its text controllers through the route's exit animation.
 class PasteKnowledge extends StatefulWidget {
@@ -70,39 +71,43 @@ class _PasteKnowledgeState extends State<PasteKnowledge> {
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              CupertinoTextField(
-                controller: _title,
-                placeholder: 'Title',
-                autofocus: true,
-                onChanged: (_) => setState(() {}),
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: CupertinoTextField(
-                  controller: _text,
-                  placeholder: 'Paste your text',
-                  maxLines: null,
-                  expands: true,
-                  textAlignVertical: TextAlignVertical.top,
+          child: PanelAndContent(
+            panel: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                CupertinoTextField(
+                  controller: _title,
+                  placeholder: 'Title',
+                  autofocus: true,
                   onChanged: (_) => setState(() {}),
                 ),
-              ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text(_error!),
+                const SizedBox(height: 12),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(_error!),
+                  ),
+                const Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: Text(
+                    'Saved and indexed on this device.',
+                    style: TextStyle(fontSize: 13),
+                  ),
                 ),
-              const Padding(
-                padding: EdgeInsets.only(top: 12),
-                child: Text(
-                  'Saved and indexed on this device.',
-                  style: TextStyle(fontSize: 13),
-                ),
+              ],
+            ),
+            content: Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: CupertinoTextField(
+                controller: _text,
+                placeholder: 'Paste your text',
+                maxLines: null,
+                expands: true,
+                textAlignVertical: TextAlignVertical.top,
+                onChanged: (_) => setState(() {}),
               ),
-            ],
+            ),
           ),
         ),
       ),

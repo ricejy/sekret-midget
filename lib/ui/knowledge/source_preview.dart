@@ -6,6 +6,7 @@ import 'package:pdfrx/pdfrx.dart';
 import '../../core/knowledge/knowledge_base.dart';
 import '../../core/storage/local_data_vault.dart';
 import '../chat/chat_sheets.dart' show processingLabel;
+import '../accessible_controls.dart';
 
 /// Shared catalogue/citation destination. Re-resolves changes rather than
 /// keeping a navigable snapshot after another tab deletes the original.
@@ -169,9 +170,21 @@ class _SourcePreviewState extends State<SourcePreview> {
     // Only native text geometry is highlighted. OCR locations never invent it.
     final ordinal = _matches.take(_match).where((m) => m.page == _page).length;
     _locatePdfMatch = false;
-    unawaited(
-      search.goToMatch(pageMatches[ordinal.clamp(0, pageMatches.length - 1)]),
-    );
+    final match = pageMatches[ordinal.clamp(0, pageMatches.length - 1)];
+    if (MediaQuery.disableAnimationsOf(context)) {
+      unawaited(
+        _pdf.ensureVisible(
+          _pdf.calcRectForRectInsidePage(
+            pageNumber: match.pageNumber,
+            rect: match.bounds,
+          ),
+          margin: 50,
+          duration: Duration.zero,
+        ),
+      );
+    } else {
+      unawaited(search.goToMatch(match));
+    }
   }
 
   void _info() {
@@ -241,211 +254,206 @@ class _SourcePreviewState extends State<SourcePreview> {
                     ? const Text('Source deleted')
                     : const CupertinoActivityIndicator(),
               )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                    child: CupertinoSearchTextField(
-                      controller: _query,
-                      placeholder: 'Search this source',
-                      onChanged: (_) => _search(),
-                    ),
-                  ),
-                  if (item!.sourceType != KnowledgeSourceType.pastedText)
+            : PanelAndContent(
+                panel: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: CupertinoSlidingSegmentedControl<bool>(
-                        groupValue: _extracted,
-                        children: const {
-                          false: Text('Original'),
-                          true: Text('Extracted text'),
-                        },
-                        onValueChanged: (value) {
-                          if (value == null) return;
-                          _pdfSearch?.dispose();
-                          _pdfSearch = null;
-                          setState(() => _extracted = value);
-                          _search(jump: false);
-                        },
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      child: CupertinoSearchTextField(
+                        controller: _query,
+                        placeholder: 'Search this source',
+                        onChanged: (_) => _search(),
                       ),
                     ),
-                  if (_query.text.trim().isNotEmpty)
-                    Row(
-                      children: [
-                        CupertinoButton(
-                          onPressed: _matches.isNotEmpty && _match > 0
-                              ? () => _moveMatch(-1)
-                              : null,
-                          child: const Icon(
-                            CupertinoIcons.chevron_up,
-                            semanticLabel: 'Previous match',
-                          ),
+                    if (item!.sourceType != KnowledgeSourceType.pastedText)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: AccessibleChoice<bool>(
+                          value: _extracted,
+                          labels: const {
+                            false: 'Original',
+                            true: 'Extracted text',
+                          },
+                          onChanged: (value) {
+                            _pdfSearch?.dispose();
+                            _pdfSearch = null;
+                            setState(() => _extracted = value);
+                            _search(jump: false);
+                          },
                         ),
-                        Expanded(
-                          child: Text(
-                            _matches.isEmpty
-                                ? 'No matches in available text'
-                                : '${_match + 1} of ${_matches.length} matches',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ),
-                        CupertinoButton(
-                          onPressed:
-                              _matches.isNotEmpty &&
-                                  _match < _matches.length - 1
-                              ? () => _moveMatch(1)
-                              : null,
-                          child: const Icon(
-                            CupertinoIcons.chevron_down,
-                            semanticLabel: 'Next match',
-                          ),
-                        ),
-                      ],
-                    ),
-                  if (widget.location.text?.isNotEmpty == true &&
-                      _query.text == widget.location.text)
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 90),
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 4,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Captured passage',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
+                      ),
+                    if (_query.text.trim().isNotEmpty)
+                      Row(
+                        children: [
+                          CupertinoButton(
+                            onPressed: _matches.isNotEmpty && _match > 0
+                                ? () => _moveMatch(-1)
+                                : null,
+                            child: const Icon(
+                              CupertinoIcons.chevron_up,
+                              semanticLabel: 'Previous match',
                             ),
-                            SelectableText(
-                              widget.location.text!,
+                          ),
+                          Expanded(
+                            child: Text(
+                              _matches.isEmpty
+                                  ? 'No matches in available text'
+                                  : '${_match + 1} of ${_matches.length} matches',
+                              textAlign: TextAlign.center,
                               style: const TextStyle(fontSize: 13),
                             ),
-                          ],
-                        ),
+                          ),
+                          CupertinoButton(
+                            onPressed:
+                                _matches.isNotEmpty &&
+                                    _match < _matches.length - 1
+                                ? () => _moveMatch(1)
+                                : null,
+                            child: const Icon(
+                              CupertinoIcons.chevron_down,
+                              semanticLabel: 'Next match',
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  Expanded(
-                    child:
-                        _extracted ||
-                            item.sourceType == KnowledgeSourceType.pastedText
-                        ? _textView()
-                        : item.sourceType == KnowledgeSourceType.photo
-                        ? InteractiveViewer(
-                            minScale: .5,
-                            maxScale: 5,
-                            child: Center(
-                              child: Image.memory(
-                                preview.source.bytes,
-                                gaplessPlayback: true,
-                                semanticLabel: 'Original photograph',
-                                errorBuilder: (_, _, _) => const Text(
-                                  'Image preview unavailable. Try Extracted text.',
+                    if (widget.location.text?.isNotEmpty == true &&
+                        _query.text == widget.location.text)
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 90),
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Captured passage',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
+                              SelectableText(
+                                widget.location.text!,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    if (item.sourceType == KnowledgeSourceType.pdf)
+                      _pageControls(pages),
+                  ],
+                ),
+                content:
+                    _extracted ||
+                        item.sourceType == KnowledgeSourceType.pastedText
+                    ? _textView()
+                    : item.sourceType == KnowledgeSourceType.photo
+                    ? InteractiveViewer(
+                        minScale: .5,
+                        maxScale: 5,
+                        child: Center(
+                          child: Image.memory(
+                            preview.source.bytes,
+                            gaplessPlayback: true,
+                            semanticLabel: 'Original photograph',
+                            errorBuilder: (_, _, _) => const Text(
+                              'Image preview unavailable. Try Extracted text.',
                             ),
-                          )
-                        : FutureBuilder<void>(
-                            future: _pdfInitialization ??=
-                                pdfrxFlutterInitialize(),
-                            builder: (context, snapshot) {
-                              if (snapshot.hasError) {
-                                return const Center(
-                                  child: Text(
-                                    'PDF preview unavailable. Try Extracted text.',
-                                  ),
+                          ),
+                        ),
+                      )
+                    : FutureBuilder<void>(
+                        future: _pdfInitialization ??= pdfrxFlutterInitialize(),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError) {
+                            return const Center(
+                              child: Text(
+                                'PDF preview unavailable. Try Extracted text.',
+                              ),
+                            );
+                          }
+                          if (snapshot.connectionState !=
+                              ConnectionState.done) {
+                            return const Center(
+                              child: CupertinoActivityIndicator(),
+                            );
+                          }
+                          return PdfViewer.data(
+                            preview.source.bytes,
+                            sourceName: item.title,
+                            controller: _pdf,
+                            initialPageNumber: _page,
+                            params: PdfViewerParams(
+                              backgroundColor: CupertinoColors.systemGrey6
+                                  .resolveFrom(context),
+                              textSelectionParams:
+                                  const PdfTextSelectionParams(),
+                              onViewerReady: (_, controller) {
+                                _pdfSearch?.dispose();
+                                _pdfSearch = PdfTextSearcher(controller)
+                                  ..addListener(_pdfSearchChanged);
+                                setState(() {});
+                                _locatePdfMatch = true;
+                                _pdfSearch!.startTextSearch(
+                                  _query.text.trim(),
+                                  goToFirstMatch: false,
                                 );
-                              }
-                              if (snapshot.connectionState !=
-                                  ConnectionState.done) {
-                                return const Center(
-                                  child: CupertinoActivityIndicator(),
-                                );
-                              }
-                              return PdfViewer.data(
-                                preview.source.bytes,
-                                sourceName: item.title,
-                                controller: _pdf,
-                                initialPageNumber: _page,
-                                params: PdfViewerParams(
-                                  backgroundColor: CupertinoColors.systemGrey6
-                                      .resolveFrom(context),
-                                  textSelectionParams:
-                                      const PdfTextSelectionParams(),
-                                  onViewerReady: (_, controller) {
-                                    _pdfSearch?.dispose();
-                                    _pdfSearch = PdfTextSearcher(controller)
-                                      ..addListener(_pdfSearchChanged);
-                                    setState(() {});
-                                    _locatePdfMatch = true;
-                                    _pdfSearch!.startTextSearch(
-                                      _query.text.trim(),
-                                      goToFirstMatch: false,
-                                    );
-                                  },
-                                  onPageChanged: (page) {
-                                    if (mounted &&
-                                        page != null &&
-                                        page != _page) {
-                                      setState(() => _page = page);
-                                    }
-                                  },
-                                  pagePaintCallbacks: [
-                                    if (_pdfSearch != null)
-                                      _pdfSearch!.pageTextMatchPaintCallback,
-                                  ],
-                                  errorBannerBuilder: (_, _, _, _) => const Center(
-                                    child: Text(
-                                      'PDF preview unavailable. Try Extracted text.',
-                                    ),
-                                  ),
-                                  // No link handler: a PDF never launches a URL implicitly.
+                              },
+                              onPageChanged: (page) {
+                                if (mounted && page != null && page != _page) {
+                                  setState(() => _page = page);
+                                }
+                              },
+                              pagePaintCallbacks: [
+                                if (_pdfSearch != null)
+                                  _pdfSearch!.pageTextMatchPaintCallback,
+                              ],
+                              errorBannerBuilder: (_, _, _, _) => const Center(
+                                child: Text(
+                                  'PDF preview unavailable. Try Extracted text.',
                                 ),
-                              );
-                            },
-                          ),
-                  ),
-                  if (item.sourceType == KnowledgeSourceType.pdf)
-                    Row(
-                      children: [
-                        CupertinoButton(
-                          onPressed: _page > 1
-                              ? () => _goToPage(_page - 1)
-                              : null,
-                          child: const Icon(
-                            CupertinoIcons.chevron_left,
-                            semanticLabel: 'Previous page',
-                          ),
-                        ),
-                        Expanded(
-                          child: Text(
-                            'Page $_page of $pages',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ),
-                        CupertinoButton(
-                          onPressed: _page < pages
-                              ? () => _goToPage(_page + 1)
-                              : null,
-                          child: const Icon(
-                            CupertinoIcons.chevron_right,
-                            semanticLabel: 'Next page',
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
+                              ),
+                              // No link handler: a PDF never launches a URL implicitly.
+                            ),
+                          );
+                        },
+                      ),
               ),
       ),
     );
   }
+
+  Widget _pageControls(int pages) => Row(
+    children: [
+      CupertinoButton(
+        onPressed: _page > 1 ? () => _goToPage(_page - 1) : null,
+        child: const Icon(
+          CupertinoIcons.chevron_left,
+          semanticLabel: 'Previous page',
+        ),
+      ),
+      Expanded(
+        child: Text(
+          'Page $_page of $pages',
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 13),
+        ),
+      ),
+      CupertinoButton(
+        onPressed: _page < pages ? () => _goToPage(_page + 1) : null,
+        child: const Icon(
+          CupertinoIcons.chevron_right,
+          semanticLabel: 'Next page',
+        ),
+      ),
+    ],
+  );
 
   Widget _textView() {
     final pages = _pages.where((p) => p.number == _page);

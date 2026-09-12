@@ -363,12 +363,15 @@ class _SettingsScreenState extends State<SettingsScreen>
     ),
   );
 
-  Widget _header(String text) => Text(
-    text,
-    style: TextStyle(
-      fontSize: 13,
-      fontWeight: FontWeight.normal,
-      color: CupertinoColors.secondaryLabel.resolveFrom(context),
+  Widget _header(String text) => Semantics(
+    header: true,
+    child: Text(
+      text,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.normal,
+        color: CupertinoColors.secondaryLabel.resolveFrom(context),
+      ),
     ),
   );
   Widget _detail(String text) => SizedBox(

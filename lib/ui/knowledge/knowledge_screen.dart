@@ -10,6 +10,7 @@ import '../chat/chat_sheets.dart' show processingLabel;
 import 'source_preview.dart';
 import 'import_sheet.dart';
 import 'rename_sheet.dart';
+import '../accessible_controls.dart';
 
 String sourceTypeLabel(KnowledgeSourceType type) => switch (type) {
   KnowledgeSourceType.pastedText => 'Text',
@@ -450,229 +451,223 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
       ),
     ),
     child: SafeArea(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: CupertinoSearchTextField(
-              controller: _search,
-              placeholder: 'Search knowledge',
-              onChanged: (_) {
-                ++_revision;
-                _debounce?.cancel();
-                _debounce = Timer(const Duration(milliseconds: 180), _load);
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Wrap(
-              children: [
-                CupertinoButton(
-                  onPressed: () => _filter(types: true),
-                  child: Text(
-                    _type == null ? 'All types' : sourceTypeLabel(_type!),
-                  ),
-                ),
-                CupertinoButton(
-                  onPressed: () => _filter(types: false),
-                  child: Text(
-                    _state == null ? 'All states' : processingLabel(_state!),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (_error != null || _loadError != null)
-            CupertinoButton(
-              onPressed: () {
-                setState(() => _error = null);
-                _load();
-              },
-              child: Text(_error ?? _loadError!),
-            ),
-          if (_matches != null)
+      child: PanelAndContent(
+        panel: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '${_matches!.length} ${_matches!.length == 1 ? 'item' : 'items'}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: CupertinoColors.secondaryLabel.resolveFrom(context),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: CupertinoSearchTextField(
+                controller: _search,
+                placeholder: 'Search knowledge',
+                onChanged: (_) {
+                  ++_revision;
+                  _debounce?.cancel();
+                  _debounce = Timer(const Duration(milliseconds: 180), _load);
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Wrap(
+                children: [
+                  CupertinoButton(
+                    onPressed: () => _filter(types: true),
+                    child: Text(
+                      _type == null ? 'All types' : sourceTypeLabel(_type!),
+                    ),
+                  ),
+                  CupertinoButton(
+                    onPressed: () => _filter(types: false),
+                    child: Text(
+                      _state == null ? 'All states' : processingLabel(_state!),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (_error != null || _loadError != null)
+              CupertinoButton(
+                onPressed: () {
+                  setState(() => _error = null);
+                  _load();
+                },
+                child: Text(_error ?? _loadError!),
+              ),
+            if (_matches != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '${_matches!.length} ${_matches!.length == 1 ? 'item' : 'items'}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: CupertinoColors.secondaryLabel.resolveFrom(
+                        context,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          Expanded(
-            child: _matches == null
-                ? const Center(child: CupertinoActivityIndicator())
-                : _matches!.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        _search.text.isNotEmpty ||
-                                _type != null ||
-                                _state != null
-                            ? 'No matching items'
-                            : 'Your knowledge, on device.\nAdd text, a PDF, or a photograph to get started.',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  )
-                : ListView.builder(
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    itemCount: _matches!.length,
-                    itemBuilder: (context, index) {
-                      final match = _matches![index];
-                      final item = match.item;
-                      final date = importDateLabel(item.createdAt);
-                      final checkpoint = item.checkpoint;
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (index == 0 ||
-                              importDateLabel(
-                                    _matches![index - 1].item.createdAt,
-                                  ) !=
-                                  date)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                              child: Text(
-                                date,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: CupertinoColors.secondaryLabel
-                                      .resolveFrom(context),
-                                ),
-                              ),
-                            ),
-                          Dismissible(
-                            key: ValueKey(item.id),
-                            confirmDismiss: (direction) async {
-                              if (!_busy.contains(item.id)) {
-                                if (direction == DismissDirection.startToEnd) {
-                                  await _rename(item);
-                                } else {
-                                  await _delete(item);
-                                }
-                              }
-                              return false;
-                            },
-                            background: Container(
-                              color: CupertinoColors.systemBlue,
-                              alignment: Alignment.centerLeft,
-                              padding: const EdgeInsets.all(20),
-                              child: const Text(
-                                'Rename',
-                                style: TextStyle(color: CupertinoColors.white),
-                              ),
-                            ),
-                            secondaryBackground: Container(
-                              color: CupertinoColors.systemRed,
-                              alignment: Alignment.centerRight,
-                              padding: const EdgeInsets.all(20),
-                              child: const Text(
-                                'Delete',
-                                style: TextStyle(color: CupertinoColors.white),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: CupertinoButton(
-                                    alignment: Alignment.centerLeft,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 20,
-                                      vertical: 12,
-                                    ),
-                                    onPressed: () => _open(
-                                      match.location ??
-                                          KnowledgeLocation(item.id),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          item.title,
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            color: CupertinoColors.label
-                                                .resolveFrom(context),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '${sourceTypeLabel(item.sourceType)} · ${sourceSizeLabel(item.sourceSize)}${item.pageCount > 0 ? ' · ${item.pageCount} ${item.pageCount == 1 ? 'page' : 'pages'}' : ''}',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: CupertinoColors
-                                                .secondaryLabel
-                                                .resolveFrom(context),
-                                          ),
-                                        ),
-                                        Text(
-                                          '${processingLabel(item.processingState)}${checkpoint == null ? '' : ' · ${checkpoint.stage} ${checkpoint.completedUnits}/${checkpoint.totalUnits}'}',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: CupertinoColors.label
-                                                .resolveFrom(context),
-                                          ),
-                                        ),
-                                        if (item.processingMessage != null)
-                                          Text(
-                                            item.processingMessage!,
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              color: CupertinoColors
-                                                  .secondaryLabel
-                                                  .resolveFrom(context),
-                                            ),
-                                          ),
-                                        if (match.excerpt != null)
-                                          Padding(
-                                            padding: const EdgeInsets.only(
-                                              top: 6,
-                                            ),
-                                            child: Text(
-                                              match.excerpt!,
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                CupertinoButton(
-                                  onPressed: _busy.contains(item.id)
-                                      ? null
-                                      : () => _actions(item),
-                                  child: Icon(
-                                    CupertinoIcons.ellipsis,
-                                    semanticLabel: 'Actions for ${item.title}',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            height: .5,
-                            margin: const EdgeInsets.only(left: 20),
-                            color: CupertinoColors.separator.resolveFrom(
-                              context,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
+          ],
+        ),
+        content: _matches == null
+            ? const Center(child: CupertinoActivityIndicator())
+            : _matches!.isEmpty
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    _search.text.isNotEmpty || _type != null || _state != null
+                        ? 'No matching items'
+                        : 'Your knowledge, on device.\nAdd text, a PDF, or a photograph to get started.',
+                    textAlign: TextAlign.center,
                   ),
-          ),
-        ],
+                ),
+              )
+            : ListView.builder(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                itemCount: _matches!.length,
+                itemBuilder: (context, index) {
+                  final match = _matches![index];
+                  final item = match.item;
+                  final date = importDateLabel(item.createdAt);
+                  final checkpoint = item.checkpoint;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (index == 0 ||
+                          importDateLabel(
+                                _matches![index - 1].item.createdAt,
+                              ) !=
+                              date)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                          child: Text(
+                            date,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: CupertinoColors.secondaryLabel.resolveFrom(
+                                context,
+                              ),
+                            ),
+                          ),
+                        ),
+                      Dismissible(
+                        key: ValueKey(item.id),
+                        confirmDismiss: (direction) async {
+                          if (!_busy.contains(item.id)) {
+                            if (direction == DismissDirection.startToEnd) {
+                              await _rename(item);
+                            } else {
+                              await _delete(item);
+                            }
+                          }
+                          return false;
+                        },
+                        background: Container(
+                          color: CupertinoColors.systemBlue,
+                          alignment: Alignment.centerLeft,
+                          padding: const EdgeInsets.all(20),
+                          child: const Text(
+                            'Rename',
+                            style: TextStyle(color: CupertinoColors.white),
+                          ),
+                        ),
+                        secondaryBackground: Container(
+                          color: CupertinoColors.systemRed,
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.all(20),
+                          child: const Text(
+                            'Delete',
+                            style: TextStyle(color: CupertinoColors.white),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: CupertinoButton(
+                                alignment: Alignment.centerLeft,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 12,
+                                ),
+                                onPressed: () => _open(
+                                  match.location ?? KnowledgeLocation(item.id),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.title,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: CupertinoColors.label
+                                            .resolveFrom(context),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${sourceTypeLabel(item.sourceType)} · ${sourceSizeLabel(item.sourceSize)}${item.pageCount > 0 ? ' · ${item.pageCount} ${item.pageCount == 1 ? 'page' : 'pages'}' : ''}',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: CupertinoColors.secondaryLabel
+                                            .resolveFrom(context),
+                                      ),
+                                    ),
+                                    Text(
+                                      '${processingLabel(item.processingState)}${checkpoint == null ? '' : ' · ${checkpoint.stage} ${checkpoint.completedUnits}/${checkpoint.totalUnits}'}',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: CupertinoColors.label
+                                            .resolveFrom(context),
+                                      ),
+                                    ),
+                                    if (item.processingMessage != null)
+                                      Text(
+                                        item.processingMessage!,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: CupertinoColors.secondaryLabel
+                                              .resolveFrom(context),
+                                        ),
+                                      ),
+                                    if (match.excerpt != null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 6),
+                                        child: Text(
+                                          match.excerpt!,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            CupertinoButton(
+                              onPressed: _busy.contains(item.id)
+                                  ? null
+                                  : () => _actions(item),
+                              child: Icon(
+                                CupertinoIcons.ellipsis,
+                                semanticLabel: 'Actions for ${item.title}',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        height: .5,
+                        margin: const EdgeInsets.only(left: 20),
+                        color: CupertinoColors.separator.resolveFrom(context),
+                      ),
+                    ],
+                  );
+                },
+              ),
       ),
     ),
   );
